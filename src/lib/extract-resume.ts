@@ -432,13 +432,16 @@ Schema: { candidate, headline, location, email, phone, linkedin, github, portfol
 ${wrapUntrustedResume(resumeText)}`;
 }
 
-export async function extractStructuredResume(resumeText: string): Promise<{
+export async function extractStructuredResume(
+  resumeText: string,
+  options?: { allowGemini?: boolean }
+): Promise<{
   resume: CandidateResume;
   mode: "gemini" | "heuristic";
 }> {
   const fallback = extractResumeHeuristic(resumeText);
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) return { resume: fallback, mode: "heuristic" };
+  if (!apiKey || options?.allowGemini === false) return { resume: fallback, mode: "heuristic" };
 
   try {
     const raw = await callModel(apiKey, extractPrompt(resumeText.slice(0, 12000)), null, 0, {

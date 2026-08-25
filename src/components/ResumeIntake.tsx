@@ -67,6 +67,7 @@ export function ResumeIntake({
       </div>
       <div
         className={`dropzone${dragOver ? " dropzone-over" : ""}`}
+        onClick={() => inputRef.current?.click()}
         onDragOver={(event) => {
           event.preventDefault();
           setDragOver(true);
@@ -76,7 +77,15 @@ export function ResumeIntake({
       >
         <p>
           Drop a resume here, or{" "}
-          <button type="button" className="linkish" onClick={() => inputRef.current?.click()} disabled={blocked}>
+          <button
+            type="button"
+            className="linkish"
+            onClick={(event) => {
+              event.stopPropagation();
+              inputRef.current?.click();
+            }}
+            disabled={blocked}
+          >
             browse
           </button>
         </p>

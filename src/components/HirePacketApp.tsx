@@ -103,32 +103,11 @@ export function HirePacketApp() {
 
         <main>
           <section className="hero no-print">
-            <p className="eyebrow">
-              <span className="tape">Verified resume</span>
-              Evidence-backed brief for any candidate
-            </p>
-            <h1>
-              Upload a resume.
-              <span>Paste a job.</span>
-            </h1>
+            <p className="eyebrow">Single packet</p>
+            <h1>Match one resume to the job.</h1>
             <p className="lede">
-              Extract structured resume JSON, match it in code against a JD, and leave with a one-page hire packet:
-              exact bullets, an explainable score, honest gaps, and a note a recruiter can forward.
+              Upload, confirm the extract, paste the JD. You get a score with cited evidence — not an auto-reject.
             </p>
-            <ul className="proof-row">
-              <li>
-                <strong>01 Proof</strong>
-                <span>Every strong match cites a confirmed resume bullet. No invented jobs.</span>
-              </li>
-              <li>
-                <strong>02 Score</strong>
-                <span>35 / 25 / 20 / 10 / 10 — calculated in TypeScript, not by the model.</span>
-              </li>
-              <li>
-                <strong>03 Honesty</strong>
-                <span>Gaps stay gaps. Adjacent experience is labeled transferable, not a match.</span>
-              </li>
-            </ul>
           </section>
 
           {!resume ? (
@@ -267,24 +246,6 @@ export function HirePacketApp() {
               }}
             />
           ) : null}
-
-          <section className="how no-print">
-            <h2>Not an ATS scanner.</h2>
-            <ol>
-              <li>
-                <strong>Confirmed resume JSON.</strong> Gemini extracts text into structured fields. You review it.
-                Matching never edits it.
-              </li>
-              <li>
-                <strong>Match in code.</strong> No evidence → cannot be a strong match. Weights: required 35, experience
-                25, responsibilities 20, preferred 10, education 10.
-              </li>
-              <li>
-                <strong>Narrative last.</strong> The model may only write copy from verified matches. Invalid JSON is
-                retried, then a heuristic fallback — the page does not crash.
-              </li>
-            </ol>
-          </section>
         </main>
 
         <footer className="site-foot no-print">

@@ -2,29 +2,24 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { candidate } from "@/data/candidate";
+import { LogoMark } from "@/components/LogoMark";
 
-export function SiteHeader({ extra }: { extra?: ReactNode }) {
+export function SiteHeader({ extra, tone = "light" }: { extra?: ReactNode; tone?: "light" | "dark" }) {
   return (
-    <header className="topbar no-print">
+    <header className={`topbar no-print topbar-${tone}`}>
       <Link className="wordmark" href="/">
-        <span className="mark" aria-hidden />
+        <LogoMark />
         <span>
           <em>Hire Packet</em>
-          <small>Evidence-backed brief</small>
+          <small>Evidence before the decision</small>
         </span>
       </Link>
       <nav className="top-links">
         {extra}
-        <a href={candidate.portfolio} target="_blank" rel="noreferrer">
-          Portfolio
-        </a>
-        <a href={candidate.linkedin} target="_blank" rel="noreferrer">
-          LinkedIn
-        </a>
-        <a href={candidate.github} target="_blank" rel="noreferrer">
-          GitHub
-        </a>
+        <Link href="/packet">One packet</Link>
+        <Link className="nav-cta" href="/compare">
+          Compare<span className="nav-full"> slate</span>
+        </Link>
       </nav>
     </header>
   );

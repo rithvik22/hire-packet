@@ -1,5 +1,5 @@
-import { HirePacketApp } from "@/components/HirePacketApp";
+import { LandingPage } from "@/components/LandingPage";
 
 export default function Home() {
-  return <HirePacketApp />;
+  return <LandingPage />;
 }

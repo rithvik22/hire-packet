@@ -11,7 +11,7 @@ export const maxDuration = 30;
 export async function POST(request: Request) {
   try {
     const ip = clientIp(request);
-    if (isRateLimited(ip, 8, 10 * 60 * 1000)) {
+    if (isRateLimited(ip, 40, 10 * 60 * 1000)) {
       logEvent("rate_limited", { route: "resume" });
       return NextResponse.json(
         { error: "Too many resume uploads. Wait a few minutes and try again." },
@@ -40,7 +40,9 @@ export async function POST(request: Request) {
       logEvent("resume_injection_flag", { textChars: sanitized.text.length });
     }
 
-    const extracted = await extractStructuredResume(sanitized.text);
+    const extracted = await extractStructuredResume(sanitized.text, {
+      allowGemini: form.get("fast") !== "1",
+    });
     logEvent("resume_parsed", {
       mode: extracted.mode,
       textChars: sanitized.text.length,

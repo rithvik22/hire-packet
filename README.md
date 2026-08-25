@@ -35,10 +35,11 @@ flowchart LR
 7. Score is calculated in TypeScript.
 8. Gemini writes summary, top qualifications, questions, and recruiter note from verified matches only.
 9. Copy, download PDF, or share `/p/[slug]`.
+10. Or open **Compare** (`/compare`): one JD, 5–20 resumes, dashboard, shortlist, hiring-manager link `/board/[slug]`.
 
-Rithvik’s frozen resume remains a **Try sample candidate** option.
+Rithvik’s frozen resume remains a **Try sample candidate** option. Comparison includes a 5-person **demo slate**.
 
-If Gemini is missing or returns invalid JSON: retry, then heuristic extract/narrative. Matching and scoring still run.
+If Gemini is missing or returns invalid JSON: retry, then heuristic extract/narrative. Matching and scoring still run. Batch compare extracts the JD once, then scores every resume in code.
 
 ---
 
@@ -95,4 +96,4 @@ Without a key, heuristic extraction still feeds the **same matcher and scorer**.
 
 ## Next (not in this build)
 
-Multiple candidate comparison. No accounts, billing, or ATS integrations yet.
+Recruiter workspace: accounts, teams, saved jobs, database storage, permissions and collaboration.

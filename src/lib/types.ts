@@ -159,5 +159,13 @@ export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
   weak_fit: "Weak fit",
 };
 
+export type RecruiterStatus = "shortlist" | "review" | "hold";
+
+export const RECRUITER_STATUS_LABELS: Record<RecruiterStatus, string> = {
+  shortlist: "Shortlist",
+  review: "Review",
+  hold: "Hold",
+};
+
 export const AI_DISCLOSURE =
   "AI-assisted packet. Evidence is copied from a structured resume the user confirmed. Matching and scoring run in code — Gemini cannot invent employers. The fit score is 35 / 25 / 20 / 10 / 10. This is not a hiring decision.";

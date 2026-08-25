@@ -113,7 +113,7 @@ export function PacketReport({
       </div>
       <header className="dossier-masthead">
         <div className="dossier-kicker">
-          <span>Classified brief</span>
+          <span>Evidence brief</span>
           <span className="dot" />
           <span>{generated}</span>
           <span className="dot" />
