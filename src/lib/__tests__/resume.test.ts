@@ -3,7 +3,7 @@ import { extractResumeHeuristic, parseCandidateResume } from "@/lib/extract-resu
 import { MAX_RESUME_BYTES, normalizeResumeLayout, resumeFileError } from "@/lib/parse-file";
 import { MIN_RESUME_CHARS, sanitizeResumeText, wrapUntrustedResume } from "@/lib/sanitize";
 import { heuristicFit } from "@/lib/heuristic";
-import { RETELL_JD } from "@/data/sample-jd";
+import { SAMPLE_JD } from "@/data/sample-jd";
 
 const SAMPLE_TEXT = `
 Alex Rivera
@@ -105,7 +105,7 @@ Bachelor of Technology: Computer Science 04/2022 Anurag University
 describe("generatePacket uses the supplied resume", () => {
   it("scores the designer resume without Healthvice evidence", () => {
     const resume = extractResumeHeuristic(SAMPLE_TEXT);
-    const packet = heuristicFit(RETELL_JD, resume);
+    const packet = heuristicFit(SAMPLE_JD, resume);
     expect(packet.candidate.name).toMatch(/Alex Rivera/);
     expect(packet.requirements.some((row) => row.evidence.join(" ").includes("Healthvice"))).toBe(false);
     expect(packet.sharePath.startsWith("/p/")).toBe(true);

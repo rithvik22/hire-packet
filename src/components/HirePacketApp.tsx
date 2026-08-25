@@ -3,7 +3,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useState } from "react";
 import { candidate } from "@/data/candidate";
 import { sampleCandidateResume } from "@/data/resume";
-import { RETELL_JD, RETELL_JD_TITLE, SAMPLE_JD, SAMPLE_JD_TITLE } from "@/data/sample-jd";
+import { SAMPLE_JD, SAMPLE_JD_TITLE } from "@/data/sample-jd";
 import type { CandidateResume, HirePacketResult } from "@/lib/types";
 import { PacketReport } from "@/components/PacketReport";
 import { ResumeIntake } from "@/components/ResumeIntake";
@@ -179,30 +179,17 @@ export function HirePacketApp() {
                   {loading ? "Collating…" : "Generate hire packet"}
                 </button>
                 {usingSample ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => {
-                        setJobDescription(RETELL_JD);
-                        void generate(RETELL_JD);
-                      }}
-                      disabled={loading}
-                    >
-                      {RETELL_JD_TITLE}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() => {
-                        setJobDescription(SAMPLE_JD);
-                        void generate(SAMPLE_JD);
-                      }}
-                      disabled={loading}
-                    >
-                      {SAMPLE_JD_TITLE}
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      setJobDescription(SAMPLE_JD);
+                      void generate(SAMPLE_JD);
+                    }}
+                    disabled={loading}
+                  >
+                    {SAMPLE_JD_TITLE}
+                  </button>
                 ) : null}
                 <span className="kbd-hint">⌘ Enter</span>
               </div>
@@ -229,7 +216,7 @@ export function HirePacketApp() {
               <p className="collating-kicker">Awaiting a job description</p>
               <p>
                 {usingSample
-                  ? "Run the Retell sample to see a live brief — score, proof, gaps, and a forward-ready note — in under a minute."
+                  ? "Run the Northline sample to see a live brief — score, proof, gaps, and a forward-ready note — in under a minute."
                   : `Paste a JD to match against ${resume?.candidate ?? "this resume"}.`}
               </p>
             </div>

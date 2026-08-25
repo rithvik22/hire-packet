@@ -3,7 +3,7 @@ import { MIN_JD_CHARS, sanitizeJobDescription, wrapUntrustedJd } from "@/lib/san
 import { decodePacket, encodePacket, getShare, putShare } from "@/lib/share";
 import { slugify } from "@/lib/slug";
 import { heuristicFit } from "@/lib/heuristic";
-import { RETELL_JD } from "@/data/sample-jd";
+import { SAMPLE_JD } from "@/data/sample-jd";
 
 describe("sanitizeJobDescription", () => {
   it("rejects too-short input", () => {
@@ -28,13 +28,13 @@ describe("sanitizeJobDescription", () => {
 
 describe("slugify", () => {
   it("builds kebab-case slugs", () => {
-    expect(slugify("Retell Full-Stack")).toBe("retell-full-stack");
+    expect(slugify("Northline Full-Stack")).toBe("northline-full-stack");
   });
 });
 
 describe("share codec", () => {
   it("round-trips a packet without storing the original JD", () => {
-    const packet = heuristicFit(RETELL_JD);
+    const packet = heuristicFit(SAMPLE_JD);
     const token = encodePacket(packet);
     const back = decodePacket(token);
     expect(back?.fitScore).toBe(packet.fitScore);
@@ -43,13 +43,13 @@ describe("share codec", () => {
   });
 });
 
-describe("heuristic Retell packet", () => {
-  it("is deterministic and treats telephony as transferable", () => {
-    const a = heuristicFit(RETELL_JD);
-    const b = heuristicFit(RETELL_JD);
+describe("heuristic sample packet", () => {
+  it("is deterministic and keeps Healthvice evidence on strong matches", () => {
+    const a = heuristicFit(SAMPLE_JD);
+    const b = heuristicFit(SAMPLE_JD);
     expect(a.fitScore).toBe(b.fitScore);
-    expect(a.slug).toBe("retell-full-stack");
-    expect(a.gaps.transferable.map((g) => `${g.requirement} ${g.note}`).join(" ")).toMatch(/telephony|Socket/i);
+    expect(a.sharePath).not.toMatch(/retell/i);
+    expect(a.fitScore).toBeGreaterThanOrEqual(80);
     expect(
       a.requirements.some((r) => r.status === "strong_match" && r.evidence.some((e) => e.includes("Healthvice")))
     ).toBe(true);

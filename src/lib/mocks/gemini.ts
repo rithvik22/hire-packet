@@ -1,18 +1,18 @@
 import type { JdExtraction } from "@/lib/types";
 
 export const MOCK_JD_EXTRACTION: JdExtraction = {
-  role: "Full-Stack Engineer — Retell AI",
+  role: "Senior Full-Stack Engineer — Northline Health",
   requiredSkills: [
     "TypeScript and React",
     "Next.js",
     "Node.js APIs",
     "PostgreSQL",
-    "Real-time systems / WebSockets",
+    "AWS",
   ],
-  preferredSkills: ["Telephony / SIP / Twilio", "Kubernetes", "RAG / LLM evaluations"],
+  preferredSkills: ["Go or Rust in production", "Kubernetes", "RAG / LLM evaluations"],
   responsibilities: [
-    "Ship React / Next.js dashboards",
-    "Build Node.js services for call state and webhooks",
+    "Ship React / Next.js product surfaces",
+    "Build NestJS and Node.js services with REST/GraphQL",
   ],
   minimumExperience: 4,
   education: ["BS/MS Computer Science", "Cloud certification"],

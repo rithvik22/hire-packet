@@ -103,8 +103,8 @@ describe("assemblePacket", () => {
     expect(packet.candidate.name).toBe(sample.candidate);
     expect(packet.recommendation).toMatch(/fit/);
     expect(packet.requirements.find((r) => r.status === "strong_match")?.evidence.length).toBeGreaterThan(0);
-    expect(packet.gaps.transferable.map((g) => `${g.requirement} ${g.note}`).join(" ")).toMatch(/telephony/i);
-    expect(packet.sharePath).toBe("/p/retell-full-stack");
+    expect(packet.sharePath).toMatch(/^\/p\/rithvik-/);
+    expect(packet.sharePath).not.toMatch(/retell/i);
   });
 });
 

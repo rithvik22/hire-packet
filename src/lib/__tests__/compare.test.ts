@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { demoSlate } from "@/data/demo-slate";
-import { RETELL_JD } from "@/data/sample-jd";
+import { SAMPLE_JD } from "@/data/sample-jd";
 import {
   decodeBoard,
   defaultStatus,
@@ -197,7 +197,7 @@ describe("batch packets", () => {
     const slate = demoSlate();
     expect(slate).toHaveLength(5);
     const { packets } = await generateHirePackets(
-      RETELL_JD,
+      SAMPLE_JD,
       slate.map((item) => item.resume)
     );
     expect(packets).toHaveLength(5);
@@ -205,7 +205,9 @@ describe("batch packets", () => {
     expect(new Set(scores).size).toBeGreaterThan(1);
     const designer = packets.find((packet) => packet.candidate.name === "Alex Rivera");
     const rithvik = packets.find((packet) => /Rithvik/i.test(packet.candidate.name));
+    expect(rithvik?.fitScore).toBeGreaterThanOrEqual(80);
     expect(designer?.fitScore).toBeLessThan(rithvik?.fitScore ?? 0);
+    expect(Math.max(...scores)).toBe(rithvik?.fitScore);
     expect(packetStats(rithvik ?? null).strong).toBeGreaterThan(packetStats(designer ?? null).strong);
     packets.forEach((packet) => {
       expect(packet.recommendation).toMatch(/fit/);

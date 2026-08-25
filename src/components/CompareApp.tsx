@@ -3,7 +3,7 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { candidate } from "@/data/candidate";
 import { demoSlate } from "@/data/demo-slate";
-import { RETELL_JD, RETELL_JD_TITLE } from "@/data/sample-jd";
+import { SAMPLE_JD, SAMPLE_JD_TITLE } from "@/data/sample-jd";
 import {
   boardToText,
   defaultStatus,
@@ -448,11 +448,11 @@ export function CompareApp() {
                 type="button"
                 className="btn-ghost"
                 onClick={() => {
-                  setJobDescription(RETELL_JD);
+                  setJobDescription(SAMPLE_JD);
                 }}
                 disabled={Boolean(progress)}
               >
-                {RETELL_JD_TITLE}
+                {SAMPLE_JD_TITLE}
               </button>
               <button type="button" className="btn-ghost" onClick={loadDemo} disabled={Boolean(progress)}>
                 Load 5 demo candidates

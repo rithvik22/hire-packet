@@ -95,9 +95,7 @@ export function assemblePacket(
   const scoreBreakdown = computeScore(buckets);
   const fitScore = scoreBreakdown.total;
   const recommendation = recommendationFromScore(fitScore);
-  const slug = /retell/i.test(extraction.role)
-    ? "retell-full-stack"
-    : slugify(`${resume.candidate}-${extraction.role}`, "packet");
+  const slug = slugify(`${resume.candidate}-${extraction.role}`, "packet");
 
   const requirements: RequirementMatch[] = [];
   const seen = new Set<string>();
