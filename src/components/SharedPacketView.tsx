@@ -56,7 +56,7 @@ export function SharedPacketView() {
           <div className="collating">
             <p className="collating-kicker">Opening shared packet</p>
             <p className="dossier-name" style={{ fontSize: 28 }}>
-              /rithvik/{slug}
+              /p/{slug}
             </p>
           </div>
         ) : null}

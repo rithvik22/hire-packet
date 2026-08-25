@@ -373,6 +373,118 @@ a {
   color: var(--muted);
 }
 
+.dropzone {
+  border: 1px dashed var(--line);
+  background: rgba(247, 241, 228, 0.55);
+  padding: 28px 18px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.dropzone p {
+  margin: 0;
+}
+
+.dropzone p + p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.dropzone-over {
+  border-color: var(--accent);
+  background: rgba(26, 107, 69, 0.08);
+}
+
+.linkish {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent-deep);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.linkish:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.source-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.review-grid label,
+.stack-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review-grid input,
+.stack-field textarea,
+.job-block input {
+  font: 15px/1.4 var(--font-body);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  padding: 6px 2px;
+  outline: none;
+}
+
+.review-grid input:focus,
+.stack-field textarea:focus,
+.job-block input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.stack-field {
+  margin: 12px 0;
+}
+
+.job-list {
+  display: grid;
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+
+.job-block {
+  border: 1px solid var(--line);
+  padding: 12px 12px 4px;
+}
+
+.job-block legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0 6px;
+}
+
 .empty-packet {
   margin-top: 32px;
   padding: 36px 24px;
@@ -972,7 +1084,8 @@ a {
 
   .proof-row,
   .dossier-title-row,
-  .gap-grid {
+  .gap-grid,
+  .review-grid {
     grid-template-columns: 1fr;
   }
 
@@ -996,6 +1109,11 @@ a {
 }
 
 @media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+
   body {
     background: white;
   }

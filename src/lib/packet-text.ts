@@ -1,5 +1,9 @@
-import { candidate } from "@/data/candidate";
 import { CATEGORY_LABELS, type HirePacketResult } from "@/lib/types";
+
+function contactLines(packet: HirePacketResult): string[] {
+  const c = packet.candidate;
+  return [c.email, c.phone, c.linkedin, c.github, c.portfolio].filter(Boolean);
+}
 
 export function packetToPlainText(packet: HirePacketResult): string {
   const reqs = packet.requirements
@@ -13,7 +17,7 @@ export function packetToPlainText(packet: HirePacketResult): string {
     items.length ? [`${title}`, ...items.map((g) => `• ${g.requirement} — ${g.note}`)] : [];
 
   return [
-    `HIRE PACKET — ${candidate.name}`,
+    `HIRE PACKET — ${packet.candidate.name}`,
     `${packet.roleGuess} · ${packet.seniority}`,
     `Recommendation: ${packet.recommendation}`,
     `Fit score: ${packet.fitScore}/100 (computed in code)`,
@@ -43,11 +47,7 @@ export function packetToPlainText(packet: HirePacketResult): string {
     packet.recruiterPitch,
     "",
     "CONTACT",
-    candidate.email,
-    candidate.phone,
-    candidate.linkedin,
-    candidate.github,
-    candidate.portfolio,
+    ...contactLines(packet),
     "",
     packet.disclosure,
   ].join("\n");

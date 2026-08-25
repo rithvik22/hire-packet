@@ -1,15 +1,14 @@
-import { candidate } from "@/data/candidate";
-import { resume } from "@/data/resume";
 import { slugify } from "@/lib/slug";
 import { computeScore, recommendationFromScore } from "@/lib/scoring";
 import type {
+  CandidateResume,
   HirePacketResult,
   JdExtraction,
   PacketNarrative,
   RequirementMatch,
   ScoreCategory,
 } from "@/lib/types";
-import { AI_DISCLOSURE } from "@/lib/types";
+import { AI_DISCLOSURE, packetCandidateFromResume } from "@/lib/types";
 
 const CATEGORY_ORDER: ScoreCategory[] = [
   "requiredSkills",
@@ -22,30 +21,38 @@ const CATEGORY_ORDER: ScoreCategory[] = [
 export function heuristicNarrative(
   extraction: JdExtraction,
   matches: RequirementMatch[],
-  fitScore: number
+  fitScore: number,
+  resume: CandidateResume
 ): PacketNarrative {
   const strong = matches.filter((m) => m.status === "strong_match");
   const gaps = matches.filter((m) => m.status === "gap");
   const whyInterview = strong.slice(0, 5).map((m) => m.evidence[0] || m.requirement);
   while (whyInterview.length < 3) {
-    whyInterview.push(`${resume.experience[0]?.role} at ${resume.experience[0]?.company}.`);
+    whyInterview.push(
+      resume.experience[0]
+        ? `${resume.experience[0].role} at ${resume.experience[0].company}.`
+        : `${resume.candidate} — review listed skills and projects.`
+    );
   }
 
+  const leadEvidence = strong[0]?.evidence[0] ?? resume.experience[0]?.evidence[0] ?? "a listed project";
   const questions = [
     {
-      question: `Walk through this evidence: ${strong[0]?.evidence[0] ?? "your WellFed architecture"}. What did you own?`,
+      question: `Walk through this evidence: ${leadEvidence}. What did you own?`,
       basedOn: "evidence" as const,
       context: strong[0]?.requirement ?? "ownership",
     },
     {
-      question: "How did you put production RAG or LLM workflows behind auth and evals?",
+      question: strong[1]
+        ? `How does this map to the JD: ${strong[1].requirement}?`
+        : "Which production system on your resume would you walk through first?",
       basedOn: "evidence" as const,
-      context: "AI workflows",
+      context: strong[1]?.requirement ?? "production work",
     },
     {
-      question: "Describe an event-driven flow you shipped (Kafka, Socket.IO, or webhooks) and how it failed safely.",
+      question: "How do you test, monitor, and roll back a change that hits customers?",
       basedOn: "evidence" as const,
-      context: "real-time",
+      context: "reliability",
     },
     gaps[0]
       ? {
@@ -59,20 +66,22 @@ export function heuristicNarrative(
           context: "90-day plan",
         },
     {
-      question: "How do you approach OWASP hardening and RBAC on a new customer-facing API?",
+      question: "How do you approach auth, permissions, and data handling on a new customer-facing API?",
       basedOn: "evidence" as const,
-      context: "auth",
+      context: "security",
     },
   ];
 
   return {
-    summary: `${candidate.name} is a ${extraction.role} candidate with verified proof on ${strong
-      .slice(0, 4)
-      .map((s) => s.requirement)
-      .join(", ") || "core full-stack work"}. Fit score ${fitScore}/100 was calculated in code from weighted categories. Gaps are listed honestly.`,
+    summary: `${resume.candidate} is a ${extraction.role} candidate with verified proof on ${
+      strong
+        .slice(0, 4)
+        .map((s) => s.requirement)
+        .join(", ") || "listed resume work"
+    }. Fit score ${fitScore}/100 was calculated in code from weighted categories. Gaps are listed honestly.`,
     whyInterview: whyInterview.slice(0, 5),
     interviewQuestions: questions,
-    recruiterPitch: `Subject: ${candidate.name} for ${extraction.role}\n\nHi — sharing a hire packet for ${candidate.name}. Fit score [SCORE]/100, calculated in code (required 35 / experience 25 / responsibilities 20 / preferred 10 / education 10).\n\nEvery strong match cites a frozen resume bullet. Gemini did not invent employers. Gaps include transferable notes where adjacent experience exists.\n\nHappy to intro.`,
+    recruiterPitch: `Subject: ${resume.candidate} for ${extraction.role}\n\nHi — sharing a hire packet for ${resume.candidate}. Fit score [SCORE]/100, calculated in code (required 35 / experience 25 / responsibilities 20 / preferred 10 / education 10).\n\nEvery strong match cites a resume bullet the user confirmed. Gemini did not invent employers. Gaps include transferable notes where adjacent experience exists.\n\nHappy to intro.`,
   };
 }
 
@@ -80,14 +89,15 @@ export function assemblePacket(
   extraction: JdExtraction,
   buckets: Record<ScoreCategory, RequirementMatch[]>,
   narrative: PacketNarrative,
-  mode: "gemini" | "heuristic"
+  mode: "gemini" | "heuristic",
+  resume: CandidateResume
 ): HirePacketResult {
   const scoreBreakdown = computeScore(buckets);
   const fitScore = scoreBreakdown.total;
   const recommendation = recommendationFromScore(fitScore);
   const slug = /retell/i.test(extraction.role)
     ? "retell-full-stack"
-    : slugify(extraction.role, "full-stack");
+    : slugify(`${resume.candidate}-${extraction.role}`, "packet");
 
   const requirements: RequirementMatch[] = [];
   const seen = new Set<string>();
@@ -112,6 +122,7 @@ export function assemblePacket(
   }));
 
   const pitch = narrative.recruiterPitch.split("[SCORE]").join(String(fitScore));
+  const packetCandidate = packetCandidateFromResume(resume);
 
   return {
     fitScore,
@@ -121,6 +132,7 @@ export function assemblePacket(
     roleGuess: extraction.role,
     seniority: /senior|lead|staff/i.test(extraction.role) ? "Senior / Lead" : "Mid–Senior",
     slug,
+    candidate: packetCandidate,
     requirements,
     gaps: { missing: missing.slice(0, 6), transferable: transferable.slice(0, 6), discuss },
     interviewQuestions: narrative.interviewQuestions.slice(0, 5),
@@ -129,6 +141,6 @@ export function assemblePacket(
     mode,
     disclosure: AI_DISCLOSURE,
     generatedAt: new Date().toISOString(),
-    sharePath: `/rithvik/${slug}`,
+    sharePath: `/p/${slug}`,
   };
 }

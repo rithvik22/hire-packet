@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { candidate } from "@/data/candidate";
 import { packetToPlainText, sectionText } from "@/lib/packet-text";
 import { encodePacket } from "@/lib/share";
 import {
@@ -100,6 +99,7 @@ export function PacketReport({
     }
   }
 
+  const person = packet.candidate;
   const generated = new Date(packet.generatedAt).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -124,28 +124,42 @@ export function PacketReport({
         <div className="dossier-title-row">
           <div>
             <p className="dossier-eyebrow">{packet.roleGuess}</p>
-            <h2 className="dossier-name">{candidate.name}</h2>
+            <h2 className="dossier-name">{person.name}</h2>
             <p className="dossier-meta">
-              {candidate.headline}
-              <span className="dot" />
-              {packet.seniority}
-              <span className="dot" />
-              {candidate.location}
+              {person.headline || packet.seniority}
+              {person.headline ? (
+                <>
+                  <span className="dot" />
+                  {packet.seniority}
+                </>
+              ) : null}
+              {person.location ? (
+                <>
+                  <span className="dot" />
+                  {person.location}
+                </>
+              ) : null}
             </p>
             <p className={`rec-banner rec-${packet.recommendation}`}>
               {RECOMMENDATION_LABELS[packet.recommendation]}
             </p>
             <p className="dossier-links">
-              <a href={`mailto:${candidate.email}`}>{candidate.email}</a>
-              <a href={candidate.linkedin} target="_blank" rel="noreferrer">
-                LinkedIn
-              </a>
-              <a href={candidate.github} target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-              <a href={candidate.portfolio} target="_blank" rel="noreferrer">
-                Portfolio
-              </a>
+              {person.email ? <a href={`mailto:${person.email}`}>{person.email}</a> : null}
+              {person.linkedin ? (
+                <a href={person.linkedin} target="_blank" rel="noreferrer">
+                  LinkedIn
+                </a>
+              ) : null}
+              {person.github ? (
+                <a href={person.github} target="_blank" rel="noreferrer">
+                  GitHub
+                </a>
+              ) : null}
+              {person.portfolio ? (
+                <a href={person.portfolio} target="_blank" rel="noreferrer">
+                  Portfolio
+                </a>
+              ) : null}
             </p>
           </div>
           <ScoreStamp score={packet.fitScore} />
@@ -156,7 +170,7 @@ export function PacketReport({
         <CopyButton text={packetToPlainText(packet)} label="Copy packet" />
         <CopyButton text={packet.recruiterPitch} label="Copy recruiter note" />
         <button type="button" className="btn-ghost" onClick={() => window.print()}>
-          Print / PDF
+          Download PDF
         </button>
         {!shareMode ? (
           <button type="button" className="btn-ghost" onClick={() => void createShare()}>

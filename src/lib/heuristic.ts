@@ -2,12 +2,16 @@ import { assemblePacket, heuristicNarrative } from "@/lib/assemble";
 import { extractJdHeuristic } from "@/lib/extract";
 import { matchJob } from "@/lib/match";
 import { computeScore } from "@/lib/scoring";
-import type { HirePacketResult } from "@/lib/types";
+import { sampleCandidateResume } from "@/data/resume";
+import type { CandidateResume, HirePacketResult } from "@/lib/types";
 
-export function heuristicFit(jobDescription: string): HirePacketResult {
+export function heuristicFit(
+  jobDescription: string,
+  resume: CandidateResume = sampleCandidateResume()
+): HirePacketResult {
   const extraction = extractJdHeuristic(jobDescription);
-  const buckets = matchJob(extraction);
+  const buckets = matchJob(extraction, resume);
   const fitScore = computeScore(buckets).total;
-  const narrative = heuristicNarrative(extraction, Object.values(buckets).flat(), fitScore);
-  return assemblePacket(extraction, buckets, narrative, "heuristic");
+  const narrative = heuristicNarrative(extraction, Object.values(buckets).flat(), fitScore, resume);
+  return assemblePacket(extraction, buckets, narrative, "heuristic", resume);
 }

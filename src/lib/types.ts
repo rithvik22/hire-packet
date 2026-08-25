@@ -1,3 +1,66 @@
+export type ResumeJob = {
+  company: string;
+  role: string;
+  location: string;
+  start: string;
+  end: string;
+  evidence: string[];
+};
+
+export type ResumeProject = {
+  name: string;
+  summary: string;
+  tech: string[];
+};
+
+/** Structured resume used by the matcher. Confirmed by the user; Gemini does not edit it during JD matching. */
+export type CandidateResume = {
+  candidate: string;
+  headline: string;
+  location: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  github: string;
+  portfolio: string;
+  yearsExperience: number;
+  skills: string[];
+  experience: ResumeJob[];
+  education: string[];
+  certifications: string[];
+  projects: ResumeProject[];
+};
+
+export type PacketCandidate = {
+  name: string;
+  headline: string;
+  location: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  github: string;
+  portfolio: string;
+};
+
+export type ResumeEvidence = {
+  company: string;
+  role: string;
+  text: string;
+};
+
+export function packetCandidateFromResume(resume: CandidateResume): PacketCandidate {
+  return {
+    name: resume.candidate,
+    headline: resume.headline,
+    location: resume.location,
+    email: resume.email,
+    phone: resume.phone,
+    linkedin: resume.linkedin,
+    github: resume.github,
+    portfolio: resume.portfolio,
+  };
+}
+
 export type MatchStatus = "strong_match" | "partial_match" | "gap";
 
 export type ScoreCategory =
@@ -58,6 +121,7 @@ export type HirePacketResult = {
   roleGuess: string;
   seniority: string;
   slug: string;
+  candidate: PacketCandidate;
   requirements: RequirementMatch[];
   gaps: {
     missing: { requirement: string; note: string }[];
@@ -96,4 +160,4 @@ export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
 };
 
 export const AI_DISCLOSURE =
-  "AI-assisted packet. Evidence is copied from a frozen resume JSON file Gemini cannot edit. The fit score is calculated in code (35 / 25 / 20 / 10 / 10). This is not a hiring decision.";
+  "AI-assisted packet. Evidence is copied from a structured resume the user confirmed. Matching and scoring run in code — Gemini cannot invent employers. The fit score is 35 / 25 / 20 / 10 / 10. This is not a hiring decision.";

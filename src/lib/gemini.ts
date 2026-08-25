@@ -1,15 +1,13 @@
-import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from "@google/generative-ai";
+import { SchemaType, type ResponseSchema } from "@google/generative-ai";
 import { extractJdHeuristic } from "@/lib/extract";
 import { assemblePacket, heuristicNarrative } from "@/lib/assemble";
+import { callModel } from "@/lib/gemini-client";
 import { logEvent } from "@/lib/log";
 import { matchJob } from "@/lib/match";
 import { JdExtractionSchema, NarrativeSchema } from "@/lib/schema";
 import { wrapUntrustedJd } from "@/lib/sanitize";
 import { computeScore } from "@/lib/scoring";
-import type { HirePacketResult, JdExtraction, PacketNarrative, RequirementMatch } from "@/lib/types";
-
-const MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"];
-const MAX_ATTEMPTS = 3;
+import type { CandidateResume, HirePacketResult, JdExtraction, PacketNarrative, RequirementMatch } from "@/lib/types";
 
 const EXTRACT_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
@@ -45,50 +43,6 @@ const NARRATIVE_SCHEMA: ResponseSchema = {
   },
   required: ["summary", "whyInterview", "interviewQuestions", "recruiterPitch"],
 };
-
-function extractJson(text: string): unknown {
-  const cleaned = text.replace(/```json|```/g, "").trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
-    throw new Error("Model did not return valid JSON");
-  }
-}
-
-async function callModel(
-  apiKey: string,
-  prompt: string,
-  schema: ResponseSchema,
-  temperature: number
-): Promise<unknown> {
-  let lastError: unknown;
-  for (const modelName of MODELS) {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            temperature,
-            responseMimeType: "application/json",
-            responseSchema: schema,
-          },
-        });
-        const suffix =
-          attempt > 1 ? `\nPrevious output failed validation. Return JSON that matches the schema exactly.` : "";
-        const result = await model.generateContent(prompt + suffix);
-        return extractJson(result.response.text());
-      } catch (err) {
-        lastError = err;
-        logEvent("gemini_retry", { attempt, ok: false });
-      }
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error("gemini_failed");
-}
 
 function extractPrompt(jobDescription: string): string {
   return `Extract hiring requirements from the job description. Return JSON only.
@@ -132,7 +86,10 @@ export function parseJdExtraction(raw: unknown): JdExtraction {
   };
 }
 
-export async function generateHirePacket(jobDescription: string): Promise<HirePacketResult> {
+export async function generateHirePacket(
+  jobDescription: string,
+  resume: CandidateResume
+): Promise<HirePacketResult> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   let extraction: JdExtraction;
   let extractMode: "gemini" | "heuristic" = "heuristic";
@@ -149,11 +106,11 @@ export async function generateHirePacket(jobDescription: string): Promise<HirePa
     extraction = extractJdHeuristic(jobDescription);
   }
 
-  const buckets = matchJob(extraction);
+  const buckets = matchJob(extraction, resume);
   const fitScore = computeScore(buckets).total;
   const flat = Object.values(buckets).flat();
 
-  let narrative: PacketNarrative = heuristicNarrative(extraction, flat, fitScore);
+  let narrative: PacketNarrative = heuristicNarrative(extraction, flat, fitScore, resume);
   let mode: "gemini" | "heuristic" = extractMode;
 
   if (apiKey && extractMode === "gemini") {
@@ -166,7 +123,7 @@ export async function generateHirePacket(jobDescription: string): Promise<HirePa
     }
   }
 
-  const packet = assemblePacket(extraction, buckets, narrative, mode);
+  const packet = assemblePacket(extraction, buckets, narrative, mode, resume);
   logEvent("packet_generated", {
     mode: packet.mode,
     score: packet.fitScore,

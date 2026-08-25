@@ -1,5 +1,5 @@
-import { flattenResumeEvidence, formatResumeEvidence, resume } from "@/data/resume";
-import type { JdExtraction, RequirementMatch, ScoreCategory } from "@/lib/types";
+import { formatResumeEvidence } from "@/data/resume";
+import type { CandidateResume, JdExtraction, RequirementMatch, ResumeEvidence, ScoreCategory } from "@/lib/types";
 
 const ALIASES: Record<string, string[]> = {
   javascript: ["js", "javascript"],
@@ -23,18 +23,32 @@ const ALIASES: Record<string, string[]> = {
   oauth: ["oauth", "jwt"],
 };
 
-const TRANSFERABLE: { pattern: RegExp; note: string }[] = [
+type TransferRule = {
+  pattern: RegExp;
+  adjacent: RegExp;
+  withAdjacent: string;
+  without: string;
+};
+
+const TRANSFERABLE: TransferRule[] = [
   {
     pattern: /telephon|sip\b|twilio|pstn|ivr|voice ai|call center/i,
-    note: "No direct telephony experience, but has worked with real-time systems, webhooks, Socket.IO and event-driven workflows.",
+    adjacent: /socket\.io|websocket|real-?time|kafka|webhook/i,
+    withAdjacent:
+      "No direct telephony experience, but has worked with real-time systems, webhooks, Socket.IO and event-driven workflows.",
+    without: "No direct telephony experience listed on the resume.",
   },
   {
     pattern: /golang|\bgo\b|rust\b/i,
-    note: "No production Go/Rust on the resume; backend depth is in Java, Node.js, and NestJS.",
+    adjacent: /\b(java|node\.js|nestjs|python|typescript)\b/i,
+    withAdjacent: "No production Go/Rust on the resume; backend depth is in the listed stack.",
+    without: "No production Go/Rust listed on the resume.",
   },
   {
     pattern: /salesforce|sap\b/i,
-    note: "No CRM platform tenure; has shipped RBAC, REST integrations, and domain workflows that transfer.",
+    adjacent: /rbac|oauth|rest|integration/i,
+    withAdjacent: "No CRM platform tenure; has shipped RBAC, REST integrations, and domain workflows that transfer.",
+    without: "No Salesforce/SAP tenure listed on the resume.",
   },
 ];
 
@@ -55,12 +69,39 @@ function mentions(haystack: string, skill: string): boolean {
   });
 }
 
-function keywordsIn(requirement: string): string[] {
+function flattenEvidence(resume: CandidateResume): ResumeEvidence[] {
+  const jobs = resume.experience.flatMap((job) =>
+    job.evidence.map((text) => ({ company: job.company, role: job.role, text }))
+  );
+  const projects = resume.projects
+    .map((project) => ({
+      company: project.name,
+      role: "Project",
+      text: [project.summary, project.tech.join(", ")].filter(Boolean).join(" — "),
+    }))
+    .filter((row) => row.text.trim().length > 8);
+  return [...jobs, ...projects];
+}
+
+function resumeHaystack(resume: CandidateResume): string {
+  return [
+    ...resume.skills,
+    ...resume.education,
+    ...resume.certifications,
+    ...resume.experience.flatMap((job) => [job.company, job.role, ...job.evidence]),
+    ...resume.projects.flatMap((project) => [project.name, project.summary, ...project.tech]),
+  ].join(" \n ");
+}
+
+function keywordsIn(requirement: string, resume: CandidateResume): string[] {
   return resume.skills.filter((skill) => mentions(requirement, skill));
 }
 
-function transferableFor(requirement: string): string | null {
-  return TRANSFERABLE.find((rule) => rule.pattern.test(requirement))?.note ?? null;
+function transferableFor(requirement: string, resume: CandidateResume): string | null {
+  const hay = resumeHaystack(resume);
+  const rule = TRANSFERABLE.find((item) => item.pattern.test(requirement));
+  if (!rule) return null;
+  return rule.adjacent.test(hay) ? rule.withAdjacent : rule.without;
 }
 
 export function enforceNoStrongWithoutEvidence(match: RequirementMatch): RequirementMatch {
@@ -74,9 +115,13 @@ export function enforceNoStrongWithoutEvidence(match: RequirementMatch): Require
   return match;
 }
 
-export function matchRequirement(requirement: string, category: ScoreCategory): RequirementMatch {
-  const keywords = keywordsIn(requirement);
-  const hits = flattenResumeEvidence().filter((row) => {
+export function matchRequirement(
+  requirement: string,
+  category: ScoreCategory,
+  resume: CandidateResume
+): RequirementMatch {
+  const keywords = keywordsIn(requirement, resume);
+  const hits = flattenEvidence(resume).filter((row) => {
     if (keywords.length === 0) {
       const tokens = normalize(requirement)
         .split(" ")
@@ -94,13 +139,10 @@ export function matchRequirement(requirement: string, category: ScoreCategory): 
   });
 
   const evidence = [
-    ...new Set([
-      ...hits.slice(0, 3).map(formatResumeEvidence),
-      ...credentialHits.slice(0, 2),
-    ]),
+    ...new Set([...hits.slice(0, 3).map(formatResumeEvidence), ...credentialHits.slice(0, 2)]),
   ];
   const listed = keywords.filter((k) => resume.skills.some((s) => mentions(s, k)));
-  const transfer = transferableFor(requirement);
+  const transfer = transferableFor(requirement, resume);
 
   let status: RequirementMatch["status"];
   if (evidence.length > 0 && (keywords.length === 0 || listed.length > 0)) {
@@ -137,23 +179,23 @@ function uniqueReqs(items: string[]): string[] {
   return out;
 }
 
-export function matchJob(extraction: JdExtraction): Record<ScoreCategory, RequirementMatch[]> {
+export function matchJob(
+  extraction: JdExtraction,
+  resume: CandidateResume
+): Record<ScoreCategory, RequirementMatch[]> {
   const requiredSkills = uniqueReqs(extraction.requiredSkills).map((req) =>
-    matchRequirement(req, "requiredSkills")
+    matchRequirement(req, "requiredSkills", resume)
   );
   const preferredSkills = uniqueReqs(extraction.preferredSkills).map((req) =>
-    matchRequirement(req, "preferredSkills")
+    matchRequirement(req, "preferredSkills", resume)
   );
   const responsibilities = uniqueReqs(extraction.responsibilities).map((req) =>
-    matchRequirement(req, "responsibilities")
+    matchRequirement(req, "responsibilities", resume)
   );
-  const education = uniqueReqs(extraction.education).map((req) => matchRequirement(req, "education"));
+  const education = uniqueReqs(extraction.education).map((req) => matchRequirement(req, "education", resume));
 
   if (education.length === 0) {
-    education.push(
-      matchRequirement("Computer Science degree or equivalent", "education"),
-      matchRequirement("Cloud or AWS certification", "education")
-    );
+    education.push(matchRequirement("Bachelor's degree or equivalent", "education", resume));
   }
 
   const experience: RequirementMatch[] = [];
@@ -165,7 +207,7 @@ export function matchJob(extraction: JdExtraction): Record<ScoreCategory, Requir
         status: enough ? "strong_match" : "partial_match",
         evidence: enough
           ? [
-              `${resume.experience[0]?.role} at ${resume.experience[0]?.company}; ~${resume.yearsExperience} years across ${resume.experience.map((e) => e.company).join(", ")}.`,
+              `${resume.experience[0]?.role || "Experience"} at ${resume.experience[0]?.company || resume.candidate}; ~${resume.yearsExperience} years across ${resume.experience.map((e) => e.company).join(", ") || "listed roles"}.`,
             ]
           : [],
         gap: enough ? null : `Resume shows about ${resume.yearsExperience} years.`,
@@ -176,9 +218,7 @@ export function matchJob(extraction: JdExtraction): Record<ScoreCategory, Requir
   }
 
   if (/lead|senior|staff/i.test(extraction.role)) {
-    experience.push(
-      matchRequirement("Lead or senior ownership of production systems", "experience")
-    );
+    experience.push(matchRequirement("Lead or senior ownership of production systems", "experience", resume));
   }
 
   return {

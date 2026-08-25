@@ -11,7 +11,7 @@ export function SiteHeader({ extra }: { extra?: ReactNode }) {
         <span className="mark" aria-hidden />
         <span>
           <em>Hire Packet</em>
-          <small>Velapati brief</small>
+          <small>Evidence-backed brief</small>
         </span>
       </Link>
       <nav className="top-links">

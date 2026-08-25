@@ -1,4 +1,5 @@
-import type { HirePacketResult } from "@/lib/types";
+import { sampleCandidateResume } from "@/data/resume";
+import { packetCandidateFromResume, type HirePacketResult } from "@/lib/types";
 
 export function encodePacket(packet: HirePacketResult): string {
   const json = JSON.stringify(packet);
@@ -17,6 +18,9 @@ export function decodePacket(token: string): HirePacketResult | null {
     const parsed = JSON.parse(json) as HirePacketResult;
     if (!parsed || typeof parsed.fitScore !== "number" || !Array.isArray(parsed.requirements)) {
       return null;
+    }
+    if (!parsed.candidate?.name) {
+      parsed.candidate = packetCandidateFromResume(sampleCandidateResume());
     }
     return parsed;
   } catch {
@@ -53,7 +57,7 @@ export function putShare(slug: string, packet: HirePacketResult): { slug: string
     i += 1;
   }
   const expiresAt = Date.now() + SHARE_TTL_MS;
-  shares.set(key, { packet: { ...packet, slug: key, sharePath: `/rithvik/${key}` }, expiresAt });
+  shares.set(key, { packet: { ...packet, slug: key, sharePath: `/p/${key}` }, expiresAt });
   return { slug: key, expiresAt };
 }
 

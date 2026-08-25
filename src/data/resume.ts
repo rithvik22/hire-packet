@@ -1,4 +1,5 @@
 import { candidate } from "@/data/candidate";
+import type { CandidateResume } from "@/lib/types";
 
 export type ResumeEvidence = {
   company: string;
@@ -110,12 +111,48 @@ resume.experience.forEach((job) => {
   Object.freeze(job.evidence);
 });
 
-export function flattenResumeEvidence(): ResumeEvidence[] {
-  return resume.experience.flatMap((job) =>
+export function flattenResumeEvidence(source: FrozenResume = resume): ResumeEvidence[] {
+  return source.experience.flatMap((job) =>
     job.evidence.map((text) => ({ company: job.company, role: job.role, text }))
   );
 }
 
 export function formatResumeEvidence(hit: ResumeEvidence): string {
   return `${hit.company}: ${hit.text}`;
+}
+
+export function sampleCandidateResume(): CandidateResume {
+  const extra = new Map(candidate.experience.map((job) => [job.company, job]));
+  return {
+    candidate: resume.candidate,
+    headline: candidate.headline,
+    location: candidate.location,
+    email: candidate.email,
+    phone: candidate.phone,
+    linkedin: candidate.linkedin,
+    github: candidate.github,
+    portfolio: candidate.portfolio,
+    yearsExperience: resume.yearsExperience,
+    skills: [...resume.skills],
+    experience: resume.experience.map((job) => {
+      const match =
+        extra.get(job.company) ||
+        [...extra.values()].find((row) => job.company.includes(row.company) || row.company.includes(job.company));
+      return {
+        company: job.company,
+        role: job.role,
+        location: match?.location ?? "",
+        start: match?.start ?? "",
+        end: match?.end ?? "",
+        evidence: [...job.evidence],
+      };
+    }),
+    education: [...resume.education],
+    certifications: [...resume.certifications],
+    projects: candidate.projects.map((project) => ({
+      name: project.name,
+      summary: project.summary,
+      tech: [...project.tech],
+    })),
+  };
 }

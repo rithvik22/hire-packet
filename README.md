@@ -2,7 +2,7 @@
 
 An **evidence-backed candidate advocacy tool** — not an ATS scanner.
 
-Paste a JD → Gemini extracts requirements → **code** matches a frozen resume → **code** scores → Gemini writes a short summary from verified results only.
+Upload a resume (or try the sample candidate) → review structured JSON → paste a JD → Gemini extracts requirements → **code** matches the confirmed resume → **code** scores → Gemini writes a short summary from verified results only.
 
 > Every strong match has resume evidence. Gaps are honest. The score is explainable. AI assists the recruiter; it does not hire.
 
@@ -14,21 +14,29 @@ Paste a JD → Gemini extracts requirements → **code** matches a frozen resume
 
 ```mermaid
 flowchart LR
+  R[PDF / DOCX] --> TX[Text only]
+  TX --> RX["Gemini resume JSON"]
+  RX --> RV[User review]
   JD[Untrusted JD] --> EX["Gemini extract JSON"]
   EX --> Z1[Zod validate]
-  Z1 --> MT["Code match vs resume.ts"]
+  RV --> MT["Code match vs confirmed resume"]
+  Z1 --> MT
   MT --> SC["Code score 35/25/20/10/10"]
   SC --> NV["Gemini summary from verified matches"]
   NV --> PK[One-page packet]
 ```
 
-1. Recruiter pastes a JD (never stored).
-2. Gemini extracts `{ role, requiredSkills, preferredSkills, responsibilities, minimumExperience, education }`.
-3. The app compares each requirement with `src/data/resume.ts` (frozen; Gemini cannot edit it).
-4. Status is only `strong_match` | `partial_match` | `gap`. **No evidence → cannot be strong_match.**
-5. Score is calculated in TypeScript.
-6. Gemini writes summary, top qualifications, questions, and recruiter note from verified matches only.
-7. Recruiter copies, prints/PDF, shares `/rithvik/retell-full-stack`, or starts a new analysis.
+1. User uploads a PDF/DOCX (4 MB max). The file is parsed in memory and discarded — never stored.
+2. Gemini (or a heuristic fallback) extracts `{ candidate, skills, experience, education, projects, certifications }`.
+3. The user reviews and corrects that JSON. Matching uses the confirmed resume only.
+4. Recruiter pastes a JD (never stored).
+5. Gemini extracts `{ role, requiredSkills, preferredSkills, responsibilities, minimumExperience, education }`.
+6. Status is only `strong_match` | `partial_match` | `gap`. **No evidence → cannot be strong_match.**
+7. Score is calculated in TypeScript.
+8. Gemini writes summary, top qualifications, questions, and recruiter note from verified matches only.
+9. Copy, download PDF, or share `/p/[slug]`.
+
+Rithvik’s frozen resume remains a **Try sample candidate** option.
 
 If Gemini is missing or returns invalid JSON: retry, then heuristic extract/narrative. Matching and scoring still run.
 
@@ -46,17 +54,18 @@ If Gemini is missing or returns invalid JSON: retry, then heuristic extract/narr
 
 Recommendation: **Strong fit** (≥80), **Possible fit** (≥55), **Weak fit**.
 
-The same JD produces the same score because matching is deterministic.
+The same JD + the same confirmed resume produces the same score because matching is deterministic.
 
 ---
 
 ## Production protection
 
 - `GEMINI_API_KEY` stays server-side
-- Rate limiting + JD length limits
-- Prompt-injection wrap (`UNTRUSTED JOB DESCRIPTION`)
-- Zod on both Gemini calls + retries
-- Logs omit JD, email, phone, prompt
+- Rate limiting + JD/resume length limits
+- Prompt-injection wrap (`UNTRUSTED JOB DESCRIPTION` / `UNTRUSTED RESUME TEXT`)
+- Zod on Gemini calls + retries
+- Resume files are not written to disk
+- Logs omit JD, resume text, email, phone, prompt
 - Loading, error, and empty states
 
 ---
@@ -71,7 +80,7 @@ npm test
 npm run build
 ```
 
-Without a key, heuristic JD extraction still feeds the **same matcher and scorer**.
+Without a key, heuristic extraction still feeds the **same matcher and scorer**.
 
 ---
 
@@ -84,6 +93,6 @@ Without a key, heuristic JD extraction still feeds the **same matcher and scorer
 
 ---
 
-## Stage 3 (not in this build)
+## Next (not in this build)
 
-Multi-candidate workspace: accounts, resume uploads, comparison, ATS integrations.
+Multiple candidate comparison. No accounts, billing, or ATS integrations yet.

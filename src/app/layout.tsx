@@ -16,20 +16,20 @@ const syne = Syne({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hire-packet.vercel.app"),
-  title: "Hire Packet — Rithvik Velapati",
-    description:
-      "Evidence-backed hire packet: explainable score, frozen resume proof, honest gaps. AI assists — it does not hire.",
+  title: "Hire Packet — evidence-backed job fit",
+  description:
+    "Upload a resume, paste a JD, get an explainable score, exact evidence, honest gaps, and a forward-ready hire note.",
   openGraph: {
-    title: "Hire Packet — why hire Rithvik",
+    title: "Hire Packet — upload a resume, paste a job",
     description:
-      "Paste any JD → fit score, proof from a frozen resume, honest gaps, and a forward-ready hire note.",
+      "Evidence-backed hire packet: structured resume JSON, code matching, honest gaps, recruiter-ready note.",
     type: "website",
     url: "/",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Hire Packet — Rithvik Velapati",
-    description: "Paste a job description. Get a one-page hire brief grounded on resume data.",
+    title: "Hire Packet",
+    description: "Upload a resume. Paste a job description. Get a one-page hire brief grounded on resume data.",
   },
 };
 

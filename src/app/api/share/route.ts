@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     logEvent("share_created", { slug: stored.slug });
     return NextResponse.json({
       slug: stored.slug,
-      path: `/rithvik/${stored.slug}`,
+      path: `/p/${stored.slug}`,
       expiresAt: stored.expiresAt,
     });
   } catch {
