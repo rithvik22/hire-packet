@@ -10,9 +10,13 @@ import {
   filterRows,
   packetStats,
   sortRows,
+  jdRequirements,
+  leadDelta,
+  mustHaveResult,
   type CompareBoard,
 } from "@/lib/compare";
 import { RECRUITER_STATUS_LABELS } from "@/lib/types";
+import { RequirementXray } from "@/components/RequirementXray";
 
 export function BoardShareView() {
   const params = useParams<{ slug: string }>();
@@ -20,6 +24,7 @@ export function BoardShareView() {
   const [board, setBoard] = useState<CompareBoard | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "missing">("loading");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [xrayReq, setXrayReq] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,10 +59,23 @@ export function BoardShareView() {
   }, [slug]);
 
   const visible = useMemo(
-    () => (board ? sortRows(filterRows(board.rows, "", "all"), "score", "desc") : []),
+    () => (board ? sortRows(filterRows(board.rows, "", "all"), "score", "desc", board.mustHaves ?? []) : []),
     [board]
   );
+  const mustHaves = board?.mustHaves ?? [];
+  const delta = useMemo(() => (board ? leadDelta(board.rows) : null), [board]);
   const openRow = visible.find((row) => row.id === openId);
+
+  useEffect(() => {
+    const reqs = jdRequirements(visible);
+    if (!reqs.length) {
+      setXrayReq(null);
+      return;
+    }
+    if (!xrayReq || !reqs.some((item) => item.requirement === xrayReq)) {
+      setXrayReq(reqs[0].requirement);
+    }
+  }, [visible, xrayReq]);
 
   return (
     <div className="desk">
@@ -88,33 +106,45 @@ export function BoardShareView() {
             </p>
             <h1>{board.role}</h1>
             <p className="lede">
-              Scores organize this slate. They are not a hiring decision. Open a name to inspect resume evidence.
+              Scores organize this slate. They are not a hiring decision. Must-haves flag gaps. They do not reject.
             </p>
+            {delta ? <p className="delta-note">{delta}</p> : null}
             <div className="table-wrap">
               <table className="req-table compare-table">
                 <thead>
                   <tr>
                     <th>Candidate</th>
                     <th>Score</th>
-                    <th>Strong matches</th>
+                    <th>Strong</th>
                     <th>Gaps</th>
+                    <th>Must-haves</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map((row) => {
                     const stats = packetStats(row.packet);
+                    const musts = mustHaveResult(row.packet, mustHaves);
                     return (
                       <tr key={row.id}>
                         <td>
-                          <button type="button" className="linkish" onClick={() => setOpenId(row.id)}>
+                          <button type="button" className="compare-name" onClick={() => setOpenId(row.id)}>
                             {row.resumeName}
                           </button>
                           {row.note ? <div className="cat-tag">{row.note}</div> : null}
                         </td>
                         <td>{row.packet?.fitScore ?? "—"}</td>
-                        <td>{stats.strong}</td>
-                        <td>{stats.gaps}</td>
+                        <td className="must-ok">{stats.strong}</td>
+                        <td className={stats.gaps ? "must-miss" : undefined}>{stats.gaps}</td>
+                        <td>
+                          {mustHaves.length ? (
+                            <span className={musts.cleared ? "must-ok" : "must-miss"}>
+                              {musts.passed}/{musts.total}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
                         <td>{RECRUITER_STATUS_LABELS[row.status]}</td>
                       </tr>
                     );
@@ -122,6 +152,13 @@ export function BoardShareView() {
                 </tbody>
               </table>
             </div>
+            <RequirementXray
+              rows={visible}
+              selected={xrayReq}
+              onSelect={setXrayReq}
+              onOpenCandidate={setOpenId}
+              mustHaves={mustHaves}
+            />
             <p className="disclosure no-print">
               Private link · scores calculated in code · recruiter set status · no automatic rejects
             </p>

@@ -16,6 +16,7 @@ export function ResumeIntake({
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [useGemini, setUseGemini] = useState(false);
 
   async function parseFile(file: File) {
     setError(null);
@@ -23,6 +24,7 @@ export function ResumeIntake({
     try {
       const body = new FormData();
       body.append("file", file);
+      if (!useGemini) body.append("fast", "1");
       const res = await fetch("/api/resume/parse", { method: "POST", body, signal: AbortSignal.timeout(45000) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not read that resume.");
@@ -101,7 +103,11 @@ export function ResumeIntake({
         />
       </div>
       {uploading ? (
-        <p className="form-note">Reading the file. If Gemini is slow, a local extract you can edit will appear in a few seconds.</p>
+        <p className="form-note">
+          {useGemini
+            ? "Gemini extract uses quota. If it fails, a local extract you can edit will appear."
+            : "Parsing locally. You can edit the extract before scoring."}
+        </p>
       ) : null}
       {error ? (
         <div className="form-error" role="alert">
@@ -112,6 +118,15 @@ export function ResumeIntake({
         <button type="button" className="btn-ghost" onClick={onSample} disabled={blocked}>
           Try sample candidate
         </button>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={useGemini}
+            onChange={(e) => setUseGemini(e.target.checked)}
+            disabled={blocked}
+          />
+          Use Gemini for this file (quota)
+        </label>
       </div>
     </div>
   );

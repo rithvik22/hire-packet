@@ -445,7 +445,7 @@ export async function extractStructuredResume(
 
   try {
     const raw = await callModel(apiKey, extractPrompt(resumeText.slice(0, 12000)), null, 0, {
-      models: ["gemini-2.0-flash", "gemini-flash-latest"],
+      models: ["gemini-2.0-flash"],
       maxAttempts: 1,
     });
     const resume = parseCandidateResume(raw);

@@ -3,7 +3,7 @@ import { generateHirePackets } from "@/lib/gemini";
 import { logEvent } from "@/lib/log";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
 import { sanitizeJobDescription } from "@/lib/sanitize";
-import { CandidateResumeSchema } from "@/lib/schema";
+import { CandidateResumeSchema, JdExtractionSchema } from "@/lib/schema";
 import { parseCandidateResume } from "@/lib/extract-resume";
 import { MAX_COMPARE_RESUMES } from "@/lib/compare";
 
@@ -44,7 +44,12 @@ export async function POST(request: Request) {
       resumes.push(parseCandidateResume(parsed.data));
     }
 
-    const result = await generateHirePackets(sanitized.text, resumes);
+    const confirmed = body?.extraction ? JdExtractionSchema.safeParse(body.extraction) : null;
+    if (body?.extraction && !confirmed?.success) {
+      return NextResponse.json({ error: "JD extract failed validation. Fix the fields and score again." }, { status: 400 });
+    }
+
+    const result = await generateHirePackets(sanitized.text, resumes, confirmed?.success ? confirmed.data : undefined);
     logEvent("batch_generated", { count: result.packets.length, mode: result.mode });
     return NextResponse.json(result);
   } catch {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { candidate } from "@/data/candidate";
 import { demoSlate } from "@/data/demo-slate";
 import { RETELL_JD, RETELL_JD_TITLE } from "@/data/sample-jd";
@@ -9,20 +9,48 @@ import {
   defaultStatus,
   encodeBoard,
   filterRows,
+  jdRequirements,
+  leadDelta,
   MAX_COMPARE_RESUMES,
+  MAX_MUST_HAVES,
+  mustHaveResult,
   packetStats,
   sortRows,
+  toggleMustHave,
   type CompareBoard,
   type CompareRow,
   type SortKey,
 } from "@/lib/compare";
-import { RECRUITER_STATUS_LABELS, type CandidateResume, type RecruiterStatus } from "@/lib/types";
+import { RECRUITER_STATUS_LABELS, type CandidateResume, type JdExtraction, type RecruiterStatus } from "@/lib/types";
 import { PacketReport } from "@/components/PacketReport";
+import { JdReview } from "@/components/JdReview";
+import { RequirementXray } from "@/components/RequirementXray";
 import { SiteHeader } from "@/components/SiteHeader";
 import { CopyButton } from "@/components/CopyButton";
 
 function newId(): string {
   return crypto.randomUUID();
+}
+
+function SortHead({
+  k,
+  label,
+  active,
+  dir,
+  onSort,
+}: {
+  k: SortKey;
+  label: string;
+  active: SortKey;
+  dir: "asc" | "desc";
+  onSort: (key: SortKey) => void;
+}) {
+  return (
+    <button type="button" className={`sort-btn${active === k ? " is-on" : ""}`} onClick={() => onSort(k)}>
+      {label}
+      {active === k ? <span className="sort-caret">{dir === "asc" ? "↑" : "↓"}</span> : null}
+    </button>
+  );
 }
 
 export function CompareApp() {
@@ -40,21 +68,41 @@ export function CompareApp() {
   const [role, setRole] = useState("");
   const [generatedAt, setGeneratedAt] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [xrayReq, setXrayReq] = useState<string | null>(null);
+  const [mustHaves, setMustHaves] = useState<string[]>([]);
+  const [mustFilter, setMustFilter] = useState<"all" | "clears" | "missing">("all");
+  const [extraction, setExtraction] = useState<JdExtraction | null>(null);
+  const [extractMode, setExtractMode] = useState<"gemini" | "heuristic">("heuristic");
+  const [jdStep, setJdStep] = useState<"paste" | "review" | "done">("paste");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const generated = rows.some((row) => row.packet);
   const tooShort = jobDescription.trim().length > 0 && jobDescription.trim().length < 40;
 
   const visible = useMemo(
-    () => filterRows(sortRows(rows, sortKey, sortDir), query, statusFilter),
-    [rows, sortKey, sortDir, query, statusFilter]
+    () => filterRows(sortRows(rows, sortKey, sortDir, mustHaves), query, statusFilter, mustHaves, mustFilter),
+    [rows, sortKey, sortDir, query, statusFilter, mustHaves, mustFilter]
   );
+
+  const delta = useMemo(() => leadDelta(rows), [rows]);
+
+  useEffect(() => {
+    const reqs = jdRequirements(rows);
+    if (!reqs.length) {
+      setXrayReq(null);
+      return;
+    }
+    if (!xrayReq || !reqs.some((item) => item.requirement === xrayReq)) {
+      setXrayReq(reqs[0].requirement);
+    }
+  }, [rows, xrayReq]);
 
   const board: CompareBoard = {
     role: role || "Role",
     createdAt: generatedAt || new Date().toISOString(),
     mode: rows.find((row) => row.packet)?.packet?.mode ?? "heuristic",
     rows,
+    mustHaves,
   };
 
   function addResume(filename: string, resume: CandidateResume) {
@@ -128,7 +176,7 @@ export function CompareApp() {
     demoSlate().forEach((item) => addResume(item.filename, item.resume));
   }
 
-  async function generate(event?: FormEvent) {
+  async function extractJd(event?: FormEvent) {
     event?.preventDefault();
     const ready = rows.filter((row) => resumes[row.id]);
     if (jobDescription.trim().length < 40) {
@@ -140,7 +188,38 @@ export function CompareApp() {
       return;
     }
 
-    setProgress(`Scoring ${ready.length} candidates against one JD…`);
+    setProgress("Extracting JD into JSON…");
+    setError(null);
+    try {
+      const res = await fetch("/api/jd", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobDescription }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not extract that JD.");
+      setExtraction(data.extraction as JdExtraction);
+      setExtractMode(data.mode === "gemini" ? "gemini" : "heuristic");
+      setJdStep("review");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not extract that JD.");
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  async function scoreSlate() {
+    const ready = rows.filter((row) => resumes[row.id]);
+    if (!extraction) {
+      setError("Review the JD extract first.");
+      return;
+    }
+    if (ready.length < 1) {
+      setError("Upload at least one resume, or load the demo slate.");
+      return;
+    }
+
+    setProgress(`Scoring ${ready.length} candidates against the confirmed JD…`);
     setError(null);
     try {
       const res = await fetch("/api/fit/batch", {
@@ -148,14 +227,17 @@ export function CompareApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           jobDescription,
+          extraction,
           resumes: ready.map((row) => resumes[row.id]),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate comparison.");
       const packets = data.packets as CompareRow["packet"][];
-      setRole(String(data.role || "Role"));
+      setRole(String(data.role || extraction.role || "Role"));
       setGeneratedAt(new Date().toISOString());
+      setMustHaves([]);
+      setMustFilter("all");
       setRows((current) =>
         current.map((row) => {
           const index = ready.findIndex((item) => item.id === row.id);
@@ -170,6 +252,7 @@ export function CompareApp() {
           };
         })
       );
+      setJdStep("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate comparison.");
     } finally {
@@ -212,6 +295,16 @@ export function CompareApp() {
     }
   }
 
+  function starMust(requirement: string) {
+    const next = toggleMustHave(mustHaves, requirement);
+    if (next === mustHaves && !mustHaves.includes(requirement)) {
+      setError(`Star at most ${MAX_MUST_HAVES} must-haves. Unstar one first.`);
+      return;
+    }
+    setMustHaves(next);
+    setError(null);
+  }
+
   const openRow = rows.find((row) => row.id === openId);
 
   return (
@@ -220,15 +313,44 @@ export function CompareApp() {
         <SiteHeader />
 
         <main>
-          <section className="hero no-print">
-            <p className="eyebrow">Comparison board</p>
-            <h1>Rank a slate against one JD.</h1>
-            <p className="lede">
-              Paste the job, drop 5–20 resumes, then shortlist, review, or hold. Scores organize. You decide.
-            </p>
-          </section>
+          {jdStep !== "done" ? (
+            <section className="hero no-print">
+              <p className="eyebrow">Comparison board</p>
+              <h1>Rank a slate against one JD.</h1>
+              <p className="lede">
+                Paste the job, drop resumes, confirm the JD extract, then x-ray and star must-haves. You shortlist.
+                Nothing is auto-rejected.
+              </p>
+            </section>
+          ) : null}
 
-          <form className="composer no-print" onSubmit={generate}>
+          {jdStep === "review" && extraction ? (
+            <>
+              <JdReview
+                extraction={extraction}
+                extractMode={extractMode}
+                onChange={setExtraction}
+                onScore={() => void scoreSlate()}
+                onBack={() => setJdStep("paste")}
+                busy={Boolean(progress)}
+              />
+              {progress ? <p className="form-note">{progress}</p> : null}
+              {error ? (
+                <div className="form-error" role="alert">
+                  <p>{error}</p>
+                </div>
+              ) : null}
+              <ul className="slate-list">
+                {rows.map((row) => (
+                  <li key={row.id}>
+                    <strong>{row.resumeName}</strong>
+                    <span>{row.filename}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : jdStep === "paste" ? (
+          <form className="composer no-print" onSubmit={extractJd}>
             <div className="folder-tab">Job + resumes</div>
             <div className="composer-head">
               <label htmlFor="compare-jd">Paste the job description</label>
@@ -274,7 +396,7 @@ export function CompareApp() {
                   browse
                 </button>
               </p>
-              <p>Parsed in memory, then discarded. Scoring runs in code against one JD extract.</p>
+              <p>Parsed locally — no Gemini. Review the JD JSON, then score in code.</p>
               <input
                 ref={fileRef}
                 id="compare-files"
@@ -320,7 +442,7 @@ export function CompareApp() {
 
             <div className="composer-actions">
               <button type="submit" className="btn-primary" disabled={Boolean(progress) || rows.length < 1}>
-                {progress ? "Working…" : "Generate packets"}
+                {progress ? "Working…" : "Review JD extract"}
               </button>
               <button
                 type="button"
@@ -337,8 +459,9 @@ export function CompareApp() {
               </button>
             </div>
           </form>
+          ) : null}
 
-          {generated ? (
+          {generated && jdStep === "done" ? (
             <section className="compare-board">
               <div className="section-head">
                 <h3>
@@ -346,6 +469,9 @@ export function CompareApp() {
                 </h3>
                 <div className="no-print compare-tools">
                   <CopyButton text={boardToText(board)} label="Copy table" />
+                  <button type="button" className="btn-ghost" onClick={() => setJdStep("review")}>
+                    Edit extract
+                  </button>
                   <button type="button" className="btn-ghost" onClick={() => window.print()}>
                     Download PDF
                   </button>
@@ -362,8 +488,9 @@ export function CompareApp() {
               </div>
               <p className="score-note">
                 {role ? `${role} · ` : ""}
-                Scores rank the slate. Status is yours. There is no auto-reject.
+                Scores rank the slate. Must-haves flag gaps. Status is yours. There is no auto-reject.
               </p>
+              {delta ? <p className="delta-note">{delta}</p> : null}
               <div className="compare-filters no-print">
                 <input
                   value={query}
@@ -379,30 +506,34 @@ export function CompareApp() {
                   <option value="review">Review</option>
                   <option value="hold">Hold</option>
                 </select>
+                <select
+                  value={mustFilter}
+                  onChange={(e) => setMustFilter(e.target.value as "all" | "clears" | "missing")}
+                  disabled={!mustHaves.length}
+                >
+                  <option value="all">All must-haves</option>
+                  <option value="clears">Clears must-haves</option>
+                  <option value="missing">Missing a must-have</option>
+                </select>
               </div>
               <div className="table-wrap">
                 <table className="req-table compare-table">
                   <thead>
                     <tr>
                       <th>
-                        <button type="button" className="linkish" onClick={() => cycleSort("name")}>
-                          Candidate
-                        </button>
+                        <SortHead k="name" label="Candidate" active={sortKey} dir={sortDir} onSort={cycleSort} />
                       </th>
                       <th>
-                        <button type="button" className="linkish" onClick={() => cycleSort("score")}>
-                          Score
-                        </button>
+                        <SortHead k="score" label="Score" active={sortKey} dir={sortDir} onSort={cycleSort} />
                       </th>
                       <th>
-                        <button type="button" className="linkish" onClick={() => cycleSort("strong")}>
-                          Strong matches
-                        </button>
+                        <SortHead k="strong" label="Strong" active={sortKey} dir={sortDir} onSort={cycleSort} />
                       </th>
                       <th>
-                        <button type="button" className="linkish" onClick={() => cycleSort("gaps")}>
-                          Gaps
-                        </button>
+                        <SortHead k="gaps" label="Gaps" active={sortKey} dir={sortDir} onSort={cycleSort} />
+                      </th>
+                      <th>
+                        <SortHead k="musts" label="Must-haves" active={sortKey} dir={sortDir} onSort={cycleSort} />
                       </th>
                       <th>Status</th>
                     </tr>
@@ -410,12 +541,13 @@ export function CompareApp() {
                   <tbody>
                     {visible.map((row) => {
                       const stats = packetStats(row.packet);
+                      const musts = mustHaveResult(row.packet, mustHaves);
                       return (
                         <tr key={row.id}>
                           <td>
                             <button
                               type="button"
-                              className="linkish"
+                              className="compare-name"
                               onClick={() => setOpenId(row.id)}
                               disabled={!row.packet}
                             >
@@ -424,8 +556,19 @@ export function CompareApp() {
                             {row.note ? <div className="cat-tag">{row.note}</div> : null}
                           </td>
                           <td>{row.packet ? row.packet.fitScore : "—"}</td>
-                          <td>{row.packet ? stats.strong : "—"}</td>
-                          <td>{row.packet ? stats.gaps : "—"}</td>
+                          <td className="must-ok">{row.packet ? stats.strong : "—"}</td>
+                          <td className={row.packet && stats.gaps ? "must-miss" : undefined}>
+                            {row.packet ? stats.gaps : "—"}
+                          </td>
+                          <td>
+                            {mustHaves.length ? (
+                              <span className={musts.cleared ? "must-ok" : "must-miss"}>
+                                {musts.passed}/{musts.total}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
                           <td>
                             <select
                               className={`status-select status-${row.status}`}
@@ -453,6 +596,14 @@ export function CompareApp() {
                   </tbody>
                 </table>
               </div>
+              <RequirementXray
+                rows={rows.filter((row) => row.packet)}
+                selected={xrayReq}
+                onSelect={setXrayReq}
+                onOpenCandidate={setOpenId}
+                mustHaves={mustHaves}
+                onToggleMustHave={starMust}
+              />
             </section>
           ) : null}
 
@@ -461,7 +612,7 @@ export function CompareApp() {
               <div className="evidence-pane">
                 <div className="section-head">
                   <h3>
-                    <span>02</span> Evidence · {openRow.resumeName}
+                    <span>03</span> Evidence · {openRow.resumeName}
                   </h3>
                   <button type="button" className="btn-ghost" onClick={() => setOpenId(null)}>
                     Back to table

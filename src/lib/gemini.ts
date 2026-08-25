@@ -5,6 +5,7 @@ import { callModel } from "@/lib/gemini-client";
 import { logEvent } from "@/lib/log";
 import { matchJob } from "@/lib/match";
 import { JdExtractionSchema, NarrativeSchema } from "@/lib/schema";
+import { geminiNarrativeEnabled } from "@/lib/gemini-budget";
 import { wrapUntrustedJd } from "@/lib/sanitize";
 import { computeScore } from "@/lib/scoring";
 import type { CandidateResume, HirePacketResult, JdExtraction, PacketNarrative, RequirementMatch } from "@/lib/types";
@@ -86,23 +87,33 @@ export function parseJdExtraction(raw: unknown): JdExtraction {
   };
 }
 
+const jdExtractCache = new Map<string, { extraction: JdExtraction; mode: "gemini" | "heuristic" }>();
+
 export async function extractJob(jobDescription: string): Promise<{
   extraction: JdExtraction;
   mode: "gemini" | "heuristic";
 }> {
+  const cacheKey = jobDescription.trim();
+  const cached = jdExtractCache.get(cacheKey);
+  if (cached) return cached;
+
   const apiKey = process.env.GEMINI_API_KEY?.trim();
+  let result: { extraction: JdExtraction; mode: "gemini" | "heuristic" };
   if (apiKey) {
     try {
       const raw = await callModel(apiKey, extractPrompt(jobDescription), EXTRACT_SCHEMA, 0, {
-        models: ["gemini-2.0-flash", "gemini-flash-latest"],
+        models: ["gemini-2.0-flash"],
         maxAttempts: 1,
       });
-      return { extraction: parseJdExtraction(raw), mode: "gemini" };
+      result = { extraction: parseJdExtraction(raw), mode: "gemini" };
     } catch {
-      return { extraction: extractJdHeuristic(jobDescription), mode: "heuristic" };
+      result = { extraction: extractJdHeuristic(jobDescription), mode: "heuristic" };
     }
+  } else {
+    result = { extraction: extractJdHeuristic(jobDescription), mode: "heuristic" };
   }
-  return { extraction: extractJdHeuristic(jobDescription), mode: "heuristic" };
+  jdExtractCache.set(cacheKey, result);
+  return result;
 }
 
 export function packetForResume(
@@ -130,9 +141,10 @@ export async function generateHirePacket(
   let mode: "gemini" | "heuristic" = extractMode;
   const apiKey = process.env.GEMINI_API_KEY?.trim();
 
-  if (apiKey && extractMode === "gemini") {
+  if (apiKey && extractMode === "gemini" && geminiNarrativeEnabled()) {
     try {
       const raw = await callModel(apiKey, narrativePrompt(extraction, flat, fitScore), NARRATIVE_SCHEMA, 0.3, {
+        models: ["gemini-2.0-flash"],
         maxAttempts: 1,
       });
       narrative = NarrativeSchema.parse(raw);
@@ -154,9 +166,13 @@ export async function generateHirePacket(
 
 export async function generateHirePackets(
   jobDescription: string,
-  resumes: CandidateResume[]
-): Promise<{ role: string; mode: "gemini" | "heuristic"; packets: HirePacketResult[] }> {
-  const { extraction, mode } = await extractJob(jobDescription);
+  resumes: CandidateResume[],
+  confirmed?: JdExtraction
+): Promise<{ role: string; mode: "gemini" | "heuristic"; packets: HirePacketResult[]; extraction: JdExtraction }> {
+  const extracted = confirmed
+    ? { extraction: confirmed, mode: "heuristic" as const }
+    : await extractJob(jobDescription);
+  const { extraction, mode } = extracted;
   const packets = resumes.map((resume) => {
     const packet = packetForResume(extraction, resume, mode);
     logEvent("packet_generated", {
@@ -167,5 +183,5 @@ export async function generateHirePackets(
     });
     return packet;
   });
-  return { role: extraction.role, mode, packets };
+  return { role: extraction.role, mode, packets, extraction };
 }

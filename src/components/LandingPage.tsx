@@ -99,9 +99,47 @@ export function LandingPage() {
                 </tr>
               </tbody>
             </table>
-            <p className="preview-caption">Open a row to read the evidence. Status is set by the recruiter.</p>
+            <p className="preview-caption">Click a JD line to x-ray evidence. Status is set by the recruiter.</p>
           </div>
         </main>
+
+        <section className="home-diff" aria-labelledby="diff-title">
+          <p className="home-badge">Why this exists</p>
+          <h2 id="diff-title">Other companies own the process. This owns the proof.</h2>
+          <div className="diff-grid">
+            <article className="diff-card">
+              <p className="diff-kicker">Them · ATS</p>
+              <h3>The system of record</h3>
+              <p>
+                Jobs, stages, interview kits. The recruiter still opens twenty PDFs and argues from memory.
+              </p>
+            </article>
+            <article className="diff-card">
+              <p className="diff-kicker">Them · AI screeners</p>
+              <h3>The model as the score</h3>
+              <p>
+                A chatbot or ranking model invents the number. No cited bullet required. Easy to treat as a silent
+                reject.
+              </p>
+            </article>
+            <article className="diff-card diff-yours">
+              <p className="diff-kicker">You · Hire Packet</p>
+              <h3>The evidence layer</h3>
+              <p>
+                The model may extract JSON. TypeScript matches and scores. Status is shortlist, review, or hold — set by
+                the recruiter.
+              </p>
+            </article>
+          </div>
+          <aside className="invention">
+            <strong>The invention</strong>
+            <p>
+              A hard rule in code, not a prompt: <code>strong_match</code> is illegal without a real resume bullet. Scores
+              organize the slate. The system never auto-rejects.
+            </p>
+          </aside>
+        </section>
+
         <footer className="home-foot">
           <span>{candidate.name}</span>
           <a href={`mailto:${candidate.email}`}>{candidate.email}</a>

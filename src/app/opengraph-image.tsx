@@ -19,7 +19,7 @@ export default function Image() {
           padding: 64,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center" }}>
           <div
             style={{
               width: 36,
@@ -44,21 +44,20 @@ export default function Image() {
               <div style={{ width: 4, height: 20, background: "#0b4d33" }} />
             </div>
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>Hire Packet</div>
+          <div style={{ display: "flex", marginLeft: 14, fontSize: 22, fontWeight: 700 }}>Hire Packet</div>
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 58, lineHeight: 1.02, fontWeight: 700, maxWidth: 980 }}>
+          <div style={{ display: "flex", fontSize: 58, lineHeight: 1.02, fontWeight: 700 }}>
             See who fits the job.
-            <br />
-            See the proof.
           </div>
-          <div style={{ marginTop: 22, fontSize: 24, color: "rgba(237,244,239,0.62)" }}>
+          <div style={{ display: "flex", fontSize: 58, lineHeight: 1.02, fontWeight: 700 }}>See the proof.</div>
+          <div style={{ display: "flex", marginTop: 22, fontSize: 24, color: "rgba(237,244,239,0.62)" }}>
             Scores in code. Evidence on every strong match. You shortlist.
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18, color: "rgba(237,244,239,0.45)" }}>
-          <span>Recruiter software · not an ATS</span>
-          <span>No auto-reject</span>
+          <div style={{ display: "flex" }}>Recruiter software · not an ATS</div>
+          <div style={{ display: "flex" }}>No auto-reject</div>
         </div>
       </div>
     ),

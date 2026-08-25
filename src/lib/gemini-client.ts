@@ -1,8 +1,9 @@
 import { GoogleGenerativeAI, type ResponseSchema } from "@google/generative-ai";
+import { isQuotaError, takeGeminiSlot } from "@/lib/gemini-budget";
 import { logEvent } from "@/lib/log";
 
-const MODELS = ["gemini-2.0-flash", "gemini-2.5-flash", "gemini-flash-latest"];
-const MAX_ATTEMPTS = 3;
+const MODELS = ["gemini-2.0-flash"];
+const MAX_ATTEMPTS = 1;
 
 export function extractJson(text: string): unknown {
   const cleaned = text.replace(/```json|```/g, "").trim();
@@ -34,6 +35,10 @@ export async function callModel(
 
   for (const modelName of models) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (!takeGeminiSlot()) {
+        logEvent("gemini_budget", { ok: false, model: modelName });
+        throw new Error("gemini_budget");
+      }
       try {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({
@@ -56,6 +61,9 @@ export async function callModel(
           model: modelName,
           reason: shortError(err),
         });
+        if (isQuotaError(err) || (err instanceof Error && err.message === "gemini_budget")) {
+          throw err instanceof Error ? err : new Error("gemini_quota");
+        }
       }
     }
   }
