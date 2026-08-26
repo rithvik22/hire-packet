@@ -3,7 +3,7 @@ import { extractJdHeuristic } from "@/lib/extract";
 import { assemblePacket, heuristicNarrative } from "@/lib/assemble";
 import { callModel } from "@/lib/gemini-client";
 import { logEvent } from "@/lib/log";
-import { matchJob } from "@/lib/match";
+import { matchJob, matchJobAsync } from "@/lib/match";
 import { JdExtractionSchema, NarrativeSchema } from "@/lib/schema";
 import { geminiNarrativeEnabled } from "@/lib/gemini-budget";
 import { wrapUntrustedJd } from "@/lib/sanitize";
@@ -116,6 +116,18 @@ export async function extractJob(jobDescription: string): Promise<{
   return result;
 }
 
+export async function packetForResumeAsync(
+  extraction: JdExtraction,
+  resume: CandidateResume,
+  mode: "gemini" | "heuristic"
+): Promise<HirePacketResult> {
+  const buckets = await matchJobAsync(extraction, resume);
+  const fitScore = computeScore(buckets).total;
+  const flat = Object.values(buckets).flat();
+  const narrative = heuristicNarrative(extraction, flat, fitScore, resume);
+  return assemblePacket(extraction, buckets, narrative, mode, resume);
+}
+
 export function packetForResume(
   extraction: JdExtraction,
   resume: CandidateResume,
@@ -133,7 +145,7 @@ export async function generateHirePacket(
   resume: CandidateResume
 ): Promise<HirePacketResult> {
   const { extraction, mode: extractMode } = await extractJob(jobDescription);
-  const buckets = matchJob(extraction, resume);
+  const buckets = await matchJobAsync(extraction, resume);
   const fitScore = computeScore(buckets).total;
   const flat = Object.values(buckets).flat();
 
@@ -173,15 +185,16 @@ export async function generateHirePackets(
     ? { extraction: confirmed, mode: "heuristic" as const }
     : await extractJob(jobDescription);
   const { extraction, mode } = extracted;
-  const packets = resumes.map((resume) => {
-    const packet = packetForResume(extraction, resume, mode);
+  const packets = [];
+  for (const resume of resumes) {
+    const packet = await packetForResumeAsync(extraction, resume, mode);
     logEvent("packet_generated", {
       mode: packet.mode,
       score: packet.fitScore,
       slug: packet.slug,
       reqCount: packet.requirements.length,
     });
-    return packet;
-  });
+    packets.push(packet);
+  }
   return { role: extraction.role, mode, packets, extraction };
 }

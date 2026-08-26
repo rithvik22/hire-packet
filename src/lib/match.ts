@@ -1,5 +1,14 @@
 import { formatResumeEvidence } from "@/data/resume";
-import { flattenResumeEvidence, formatRankedEvidence, retrieveEvidence, resumeRelevance } from "@/lib/retrieve";
+import {
+  buildEmbeddingIndex,
+  flattenResumeEvidence,
+  formatRankedEvidence,
+  retrieveEvidence,
+  retrieveEvidenceEmbedded,
+  resumeRelevance,
+  resumeRelevanceFromRanked,
+  type RankedEvidence,
+} from "@/lib/retrieve";
 import type { CandidateResume, JdExtraction, RequirementMatch, ScoreCategory } from "@/lib/types";
 
 const ALIASES: Record<string, string[]> = {
@@ -105,13 +114,13 @@ export function enforceNoStrongWithoutEvidence(match: RequirementMatch): Require
 export function matchRequirement(
   requirement: string,
   category: ScoreCategory,
-  resume: CandidateResume
+  resume: CandidateResume,
+  rankedOverride?: RankedEvidence[]
 ): RequirementMatch {
   const keywords = keywordsIn(requirement, resume);
   const listed = keywords.filter((k) => resume.skills.some((s) => mentions(s, k)));
   const transfer = transferableFor(requirement, resume);
 
-  // Lexical hits (exact / alias) — keep as primary proof when present.
   const lexicalHits = flattenResumeEvidence(resume).filter((row) => {
     if (keywords.length === 0) {
       const tokens = normalize(requirement)
@@ -122,10 +131,11 @@ export function matchRequirement(
     return keywords.some((k) => mentions(row.text, k));
   });
 
-  // Semantic retrieval ranks the best supporting bullets (related wording still counts).
-  const ranked = retrieveEvidence(requirement, resume, 5);
+  const ranked = rankedOverride ?? retrieveEvidence(requirement, resume, 5);
   const semanticHits = ranked.filter((row) => row.score >= 0.18);
-  const relevance = resumeRelevance(requirement, resume);
+  const relevance = rankedOverride
+    ? resumeRelevanceFromRanked(ranked, requirement, resume)
+    : resumeRelevance(requirement, resume);
 
   const credentialHits = [...resume.education, ...resume.certifications].filter((line) => {
     const tokens = normalize(requirement)
@@ -179,6 +189,23 @@ function uniqueReqs(items: string[]): string[] {
   return out;
 }
 
+function yearsExperienceMatch(extraction: JdExtraction, resume: CandidateResume): RequirementMatch | null {
+  if (extraction.minimumExperience <= 0) return null;
+  const enough = resume.yearsExperience >= extraction.minimumExperience;
+  return enforceNoStrongWithoutEvidence({
+    requirement: `At least ${extraction.minimumExperience}+ years of professional experience`,
+    status: enough ? "strong_match" : "partial_match",
+    evidence: enough
+      ? [
+          `${resume.experience[0]?.role || "Experience"} at ${resume.experience[0]?.company || resume.candidate}; ~${resume.yearsExperience} years across ${resume.experience.map((e) => e.company).join(", ") || "listed roles"}.`,
+        ]
+      : [],
+    gap: enough ? null : `Resume shows about ${resume.yearsExperience} years.`,
+    transferable: null,
+    category: "experience",
+  });
+}
+
 export function matchJob(
   extraction: JdExtraction,
   resume: CandidateResume
@@ -199,26 +226,74 @@ export function matchJob(
   }
 
   const experience: RequirementMatch[] = [];
-  if (extraction.minimumExperience > 0) {
-    const enough = resume.yearsExperience >= extraction.minimumExperience;
-    experience.push(
-      enforceNoStrongWithoutEvidence({
-        requirement: `At least ${extraction.minimumExperience}+ years of professional experience`,
-        status: enough ? "strong_match" : "partial_match",
-        evidence: enough
-          ? [
-              `${resume.experience[0]?.role || "Experience"} at ${resume.experience[0]?.company || resume.candidate}; ~${resume.yearsExperience} years across ${resume.experience.map((e) => e.company).join(", ") || "listed roles"}.`,
-            ]
-          : [],
-        gap: enough ? null : `Resume shows about ${resume.yearsExperience} years.`,
-        transferable: null,
-        category: "experience",
-      })
-    );
-  }
+  const years = yearsExperienceMatch(extraction, resume);
+  if (years) experience.push(years);
 
   if (/lead|senior|staff/i.test(extraction.role)) {
     experience.push(matchRequirement("Lead or senior ownership of production systems", "experience", resume));
+  }
+
+  return {
+    requiredSkills,
+    experience,
+    responsibilities,
+    preferredSkills,
+    education: education.filter((row) => row.requirement),
+  };
+}
+
+/** Same matching rules, but ranks evidence with Gemini embeddings when available. */
+export async function matchJobAsync(
+  extraction: JdExtraction,
+  resume: CandidateResume
+): Promise<Record<ScoreCategory, RequirementMatch[]>> {
+  const reqLists = {
+    requiredSkills: uniqueReqs(extraction.requiredSkills),
+    preferredSkills: uniqueReqs(extraction.preferredSkills),
+    responsibilities: uniqueReqs(extraction.responsibilities),
+    education: uniqueReqs(extraction.education),
+  };
+  const leadReq = /lead|senior|staff/i.test(extraction.role)
+    ? "Lead or senior ownership of production systems"
+    : null;
+  const allReqs = [
+    ...reqLists.requiredSkills,
+    ...reqLists.preferredSkills,
+    ...reqLists.responsibilities,
+    ...(reqLists.education.length ? reqLists.education : ["Bachelor's degree or equivalent"]),
+    ...(leadReq ? [leadReq] : []),
+  ];
+
+  const index = await buildEmbeddingIndex(allReqs, resume);
+  const rankedFor = async (requirement: string) => {
+    if (!index) return retrieveEvidenceEmbedded(requirement, resume, 5);
+    return retrieveEvidenceEmbedded(requirement, resume, 5, {
+      query: index.queries.get(requirement) ?? null,
+      docs: index.docs,
+    });
+  };
+
+  const requiredSkills = await Promise.all(
+    reqLists.requiredSkills.map(async (req) => matchRequirement(req, "requiredSkills", resume, await rankedFor(req)))
+  );
+  const preferredSkills = await Promise.all(
+    reqLists.preferredSkills.map(async (req) => matchRequirement(req, "preferredSkills", resume, await rankedFor(req)))
+  );
+  const responsibilities = await Promise.all(
+    reqLists.responsibilities.map(async (req) =>
+      matchRequirement(req, "responsibilities", resume, await rankedFor(req))
+    )
+  );
+  const educationReqs = reqLists.education.length ? reqLists.education : ["Bachelor's degree or equivalent"];
+  const education = await Promise.all(
+    educationReqs.map(async (req) => matchRequirement(req, "education", resume, await rankedFor(req)))
+  );
+
+  const experience: RequirementMatch[] = [];
+  const years = yearsExperienceMatch(extraction, resume);
+  if (years) experience.push(years);
+  if (leadReq) {
+    experience.push(matchRequirement(leadReq, "experience", resume, await rankedFor(leadReq)));
   }
 
   return {

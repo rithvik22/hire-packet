@@ -1,4 +1,5 @@
 import { formatResumeEvidence } from "@/data/resume";
+import { cosineSimilarity, embedDocuments, embedTexts, embeddingsEnabled } from "@/lib/embed";
 import type { CandidateResume, ResumeEvidence } from "@/lib/types";
 
 /** Related terms expand a JD line so wording mismatches still retrieve the right bullets. */
@@ -173,6 +174,14 @@ export function retrieveEvidence(
   resume: CandidateResume,
   topK = 3
 ): RankedEvidence[] {
+  return retrieveEvidenceLexical(requirement, resume, topK);
+}
+
+function retrieveEvidenceLexical(
+  requirement: string,
+  resume: CandidateResume,
+  topK = 3
+): RankedEvidence[] {
   const corpus = flattenResumeEvidence(resume);
   if (corpus.length === 0) return [];
 
@@ -213,6 +222,74 @@ export function retrieveEvidence(
     .slice(0, topK);
 }
 
+/**
+ * Hybrid retrieval: Gemini embeddings + lexical TF-IDF.
+ * Falls back to lexical-only when embeddings are off or fail.
+ * Never invents evidence text — only ranks existing resume bullets.
+ */
+export async function retrieveEvidenceEmbedded(
+  requirement: string,
+  resume: CandidateResume,
+  topK = 5,
+  precomputed?: { query?: number[] | null; docs?: (number[] | null)[] }
+): Promise<RankedEvidence[]> {
+  const lexical = retrieveEvidenceLexical(requirement, resume, Math.max(topK, 8));
+  const corpus = flattenResumeEvidence(resume);
+  if (!corpus.length || !embeddingsEnabled()) return lexical.slice(0, topK);
+
+  let queryVec = precomputed?.query ?? null;
+  let docVecs = precomputed?.docs ?? null;
+
+  if (!queryVec || !docVecs) {
+    const docs = await embedDocuments(corpus.map((row) => `${row.role} at ${row.company}: ${row.text}`));
+    const [q] = await embedTexts([requirement], "RETRIEVAL_QUERY");
+    queryVec = q;
+    docVecs = docs;
+  }
+
+  if (!queryVec || !docVecs.some(Boolean)) return lexical.slice(0, topK);
+
+  const byText = new Map(lexical.map((row) => [row.text, row]));
+  const blended: RankedEvidence[] = corpus.map((row, i) => {
+    const docVec = docVecs![i];
+    const embedScore = docVec ? cosineSimilarity(queryVec!, docVec) : 0;
+    const lex = byText.get(row.text);
+    const lexScore = lex?.score ?? 0;
+    const score = Math.round((embedScore * 0.72 + lexScore * 0.28) * 1000) / 1000;
+    const reasons = [
+      ...(embedScore >= 0.35 ? [`embed ${embedScore.toFixed(2)}`] : []),
+      ...(lex?.reasons || []),
+    ];
+    return { ...row, score, reasons };
+  });
+
+  return blended
+    .filter((row) => row.score >= 0.22)
+    .sort((a, b) => b.score - a.score || a.text.localeCompare(b.text))
+    .slice(0, topK);
+}
+
+/** Prefetch embeddings for one resume + many requirements (one/two batch calls). */
+export async function buildEmbeddingIndex(
+  requirements: string[],
+  resume: CandidateResume
+): Promise<{
+  queries: Map<string, number[] | null>;
+  docs: (number[] | null)[];
+} | null> {
+  if (!embeddingsEnabled()) return null;
+  const corpus = flattenResumeEvidence(resume);
+  if (!corpus.length) return null;
+
+  const docs = await embedDocuments(corpus.map((row) => `${row.role} at ${row.company}: ${row.text}`));
+  const queryVecs = await embedTexts(requirements, "RETRIEVAL_QUERY");
+  if (!docs.some(Boolean) && !queryVecs.some(Boolean)) return null;
+
+  const queries = new Map<string, number[] | null>();
+  requirements.forEach((req, i) => queries.set(req, queryVecs[i] ?? null));
+  return { queries, docs };
+}
+
 export function formatRankedEvidence(rows: RankedEvidence[]): string[] {
   return rows.map(formatResumeEvidence);
 }
@@ -222,6 +299,21 @@ export function resumeRelevance(requirement: string, resume: CandidateResume): n
   const top = retrieveEvidence(requirement, resume, 3);
   if (top.length === 0) return 0;
   const best = top[0].score;
+  const listed = resume.skills.some((skill) => {
+    const a = new Set(expandTerms(tokenize(requirement)));
+    const b = expandTerms(tokenize(skill));
+    return b.some((t) => a.has(t));
+  });
+  return Math.min(1, best + (listed ? 0.08 : 0));
+}
+
+export function resumeRelevanceFromRanked(
+  ranked: RankedEvidence[],
+  requirement: string,
+  resume: CandidateResume
+): number {
+  if (!ranked.length) return resumeRelevance(requirement, resume);
+  const best = ranked[0].score;
   const listed = resume.skills.some((skill) => {
     const a = new Set(expandTerms(tokenize(requirement)));
     const b = expandTerms(tokenize(skill));
