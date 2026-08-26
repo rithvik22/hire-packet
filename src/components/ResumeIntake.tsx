@@ -16,7 +16,7 @@ export function ResumeIntake({
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [useGemini, setUseGemini] = useState(false);
+  const [useGemini, setUseGemini] = useState(true);
 
   async function parseFile(file: File) {
     setError(null);
@@ -28,6 +28,9 @@ export function ResumeIntake({
       const res = await fetch("/api/resume/parse", { method: "POST", body, signal: AbortSignal.timeout(45000) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not read that resume.");
+      if (typeof data.warning === "string" && data.warning.trim()) {
+        setError(data.warning);
+      }
       onParsed(data.resume as CandidateResume, data.mode === "gemini" ? "gemini" : "heuristic");
     } catch (err) {
       const timedOut =

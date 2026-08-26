@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI, type ResponseSchema } from "@google/generative-ai";
-import { isQuotaError, takeGeminiSlot } from "@/lib/gemini-budget";
+import { isQuotaError, refundGeminiSlot, takeGeminiSlot } from "@/lib/gemini-budget";
 import { logEvent } from "@/lib/log";
 
-const MODELS = ["gemini-2.0-flash"];
+const MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest"];
 const MAX_ATTEMPTS = 1;
 
 export function extractJson(text: string): unknown {
@@ -54,6 +54,7 @@ export async function callModel(
         const result = await model.generateContent(prompt + suffix);
         return extractJson(result.response.text());
       } catch (err) {
+        refundGeminiSlot();
         lastError = err;
         logEvent("gemini_retry", {
           attempt,

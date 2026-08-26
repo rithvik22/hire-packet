@@ -166,7 +166,7 @@ describe("comparison board", () => {
           requirements: [
             { requirement: node, status: "strong_match", evidence: ["Node"], gap: null, transferable: null, category: "requiredSkills" },
           ],
-        } as CompareRow["packet"],
+        } as unknown as CompareRow["packet"],
       }),
       row({
         id: "b",
@@ -176,7 +176,7 @@ describe("comparison board", () => {
           requirements: [
             { requirement: node, status: "gap", evidence: [], gap: "No Node", transferable: null, category: "requiredSkills" },
           ],
-        } as CompareRow["packet"],
+        } as unknown as CompareRow["packet"],
       }),
     ];
     expect(mustHaveResult(rows[0].packet, [node]).cleared).toBe(true);

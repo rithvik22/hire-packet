@@ -102,7 +102,7 @@ export async function extractJob(jobDescription: string): Promise<{
   if (apiKey) {
     try {
       const raw = await callModel(apiKey, extractPrompt(jobDescription), EXTRACT_SCHEMA, 0, {
-        models: ["gemini-2.0-flash"],
+        models: ["gemini-flash-latest", "gemini-flash-lite-latest"],
         maxAttempts: 1,
       });
       result = { extraction: parseJdExtraction(raw), mode: "gemini" };
@@ -144,7 +144,7 @@ export async function generateHirePacket(
   if (apiKey && extractMode === "gemini" && geminiNarrativeEnabled()) {
     try {
       const raw = await callModel(apiKey, narrativePrompt(extraction, flat, fitScore), NARRATIVE_SCHEMA, 0.3, {
-        models: ["gemini-2.0-flash"],
+        models: ["gemini-flash-latest", "gemini-flash-lite-latest"],
         maxAttempts: 1,
       });
       narrative = NarrativeSchema.parse(raw);

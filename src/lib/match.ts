@@ -1,5 +1,6 @@
 import { formatResumeEvidence } from "@/data/resume";
-import type { CandidateResume, JdExtraction, RequirementMatch, ResumeEvidence, ScoreCategory } from "@/lib/types";
+import { flattenResumeEvidence, formatRankedEvidence, retrieveEvidence, resumeRelevance } from "@/lib/retrieve";
+import type { CandidateResume, JdExtraction, RequirementMatch, ScoreCategory } from "@/lib/types";
 
 const ALIASES: Record<string, string[]> = {
   javascript: ["js", "javascript"],
@@ -69,20 +70,6 @@ function mentions(haystack: string, skill: string): boolean {
   });
 }
 
-function flattenEvidence(resume: CandidateResume): ResumeEvidence[] {
-  const jobs = resume.experience.flatMap((job) =>
-    job.evidence.map((text) => ({ company: job.company, role: job.role, text }))
-  );
-  const projects = resume.projects
-    .map((project) => ({
-      company: project.name,
-      role: "Project",
-      text: [project.summary, project.tech.join(", ")].filter(Boolean).join(" — "),
-    }))
-    .filter((row) => row.text.trim().length > 8);
-  return [...jobs, ...projects];
-}
-
 function resumeHaystack(resume: CandidateResume): string {
   return [
     ...resume.skills,
@@ -121,7 +108,11 @@ export function matchRequirement(
   resume: CandidateResume
 ): RequirementMatch {
   const keywords = keywordsIn(requirement, resume);
-  const hits = flattenEvidence(resume).filter((row) => {
+  const listed = keywords.filter((k) => resume.skills.some((s) => mentions(s, k)));
+  const transfer = transferableFor(requirement, resume);
+
+  // Lexical hits (exact / alias) — keep as primary proof when present.
+  const lexicalHits = flattenResumeEvidence(resume).filter((row) => {
     if (keywords.length === 0) {
       const tokens = normalize(requirement)
         .split(" ")
@@ -131,6 +122,11 @@ export function matchRequirement(
     return keywords.some((k) => mentions(row.text, k));
   });
 
+  // Semantic retrieval ranks the best supporting bullets (related wording still counts).
+  const ranked = retrieveEvidence(requirement, resume, 5);
+  const semanticHits = ranked.filter((row) => row.score >= 0.18);
+  const relevance = resumeRelevance(requirement, resume);
+
   const credentialHits = [...resume.education, ...resume.certifications].filter((line) => {
     const tokens = normalize(requirement)
       .split(" ")
@@ -138,17 +134,21 @@ export function matchRequirement(
     return tokens.some((t) => normalize(line).includes(t)) || keywords.some((k) => mentions(line, k));
   });
 
-  const evidence = [
-    ...new Set([...hits.slice(0, 3).map(formatResumeEvidence), ...credentialHits.slice(0, 2)]),
-  ];
-  const listed = keywords.filter((k) => resume.skills.some((s) => mentions(s, k)));
-  const transfer = transferableFor(requirement, resume);
+  const lexicalEvidence = lexicalHits.slice(0, 3).map(formatResumeEvidence);
+  const semanticEvidence = formatRankedEvidence(semanticHits.slice(0, 3));
+  const evidence = [...new Set([...lexicalEvidence, ...semanticEvidence, ...credentialHits.slice(0, 2)])].slice(
+    0,
+    4
+  );
 
   let status: RequirementMatch["status"];
   if (evidence.length > 0 && (keywords.length === 0 || listed.length > 0)) {
     status = "strong_match";
-  } else if (evidence.length > 0 || listed.length > 0) {
+  } else if (evidence.length > 0 || listed.length > 0 || relevance >= 0.28) {
     status = "partial_match";
+    if (evidence.length === 0 && relevance >= 0.28 && semanticHits.length > 0) {
+      evidence.push(...formatRankedEvidence(semanticHits.slice(0, 2)));
+    }
   } else {
     status = "gap";
   }

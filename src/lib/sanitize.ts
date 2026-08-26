@@ -45,7 +45,7 @@ export function sanitizeResumeText(raw: string): {
     return {
       text,
       flagged: false,
-      error: "Could not read enough text from that file. Try a text-based PDF or DOCX.",
+      error: "Could not read enough text from that file. Try a text-based PDF or DOCX (scanned image PDFs do not work).",
     };
   }
   const clipped = text.length > MAX_RESUME_CHARS ? text.slice(0, MAX_RESUME_CHARS) : text;

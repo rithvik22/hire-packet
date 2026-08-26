@@ -53,6 +53,7 @@ export async function POST(request: Request) {
       resume: extracted.resume,
       mode: extracted.mode,
       textChars: sanitized.text.length,
+      warning: extracted.warning || null,
     });
   } catch {
     logEvent("resume_parse_error", { ok: false });

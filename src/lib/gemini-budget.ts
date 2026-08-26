@@ -35,6 +35,12 @@ export function takeGeminiSlot(): boolean {
   return true;
 }
 
+/** Failed HTTP/parse should not consume the hourly budget. */
+export function refundGeminiSlot(): void {
+  const list = calls();
+  if (list.length) list.pop();
+}
+
 export function isQuotaError(err: unknown): boolean {
   const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (

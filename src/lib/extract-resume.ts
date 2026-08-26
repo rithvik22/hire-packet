@@ -1,9 +1,55 @@
+import { SchemaType, type ResponseSchema } from "@google/generative-ai";
 import { callModel } from "@/lib/gemini-client";
 import { logEvent } from "@/lib/log";
 import { CandidateResumeSchema } from "@/lib/schema";
 import { wrapUntrustedResume } from "@/lib/sanitize";
 import type { CandidateResume, ResumeJob, ResumeProject } from "@/lib/types";
 
+const RESUME_SCHEMA: ResponseSchema = {
+  type: SchemaType.OBJECT,
+  properties: {
+    candidate: { type: SchemaType.STRING },
+    headline: { type: SchemaType.STRING },
+    location: { type: SchemaType.STRING },
+    email: { type: SchemaType.STRING },
+    phone: { type: SchemaType.STRING },
+    linkedin: { type: SchemaType.STRING },
+    github: { type: SchemaType.STRING },
+    portfolio: { type: SchemaType.STRING },
+    yearsExperience: { type: SchemaType.NUMBER },
+    skills: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    experience: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          company: { type: SchemaType.STRING },
+          role: { type: SchemaType.STRING },
+          location: { type: SchemaType.STRING },
+          start: { type: SchemaType.STRING },
+          end: { type: SchemaType.STRING },
+          evidence: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+        },
+        required: ["company", "role", "evidence"],
+      },
+    },
+    education: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    certifications: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    projects: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          name: { type: SchemaType.STRING },
+          summary: { type: SchemaType.STRING },
+          tech: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  required: ["candidate", "skills", "experience"],
+};
 const SKILL_LEXICON = [
   "Java",
   "JavaScript",
@@ -89,7 +135,8 @@ function emptyResume(): CandidateResume {
 }
 
 export function parseCandidateResume(raw: unknown): CandidateResume {
-  const parsed = CandidateResumeSchema.parse(raw);
+  const cleaned = softenResumePayload(raw);
+  const parsed = CandidateResumeSchema.parse(cleaned);
   return {
     candidate: parsed.candidate,
     headline: parsed.headline,
@@ -120,6 +167,100 @@ export function parseCandidateResume(raw: unknown): CandidateResume {
       summary: project.summary,
       tech: unique(project.tech),
     })),
+  };
+}
+
+/** Gemini often returns nulls, long bullets, or odd shapes — normalize before Zod. */
+function softenResumePayload(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const obj = raw as Record<string, unknown>;
+  const str = (value: unknown, max: number) =>
+    String(value ?? "")
+      .trim()
+      .slice(0, max);
+  const strList = (value: unknown, maxItem: number, maxItems: number) =>
+    (Array.isArray(value) ? value : [])
+      .map((item) => str(item, maxItem))
+      .filter((item) => item.length >= 1)
+      .slice(0, maxItems);
+
+  const experience = (Array.isArray(obj.experience) ? obj.experience : [])
+    .map((job) => {
+      if (!job || typeof job !== "object") return null;
+      const row = job as Record<string, unknown>;
+      const company = str(row.company ?? row.employer ?? row.organization, 120);
+      const role = str(row.role ?? row.title ?? row.position, 120);
+      if (!company || !role) return null;
+      const evidence = (Array.isArray(row.evidence) ? row.evidence : Array.isArray(row.bullets) ? row.bullets : [])
+        .map((line) => str(line, 500))
+        .filter((line) => line.length >= 4)
+        .slice(0, 12);
+      return {
+        company,
+        role,
+        location: str(row.location, 80),
+        start: str(row.start ?? row.startDate, 40),
+        end: str(row.end ?? row.endDate, 40),
+        evidence,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 14);
+
+  const projects = (Array.isArray(obj.projects) ? obj.projects : [])
+    .map((project) => {
+      if (!project || typeof project !== "object") return null;
+      const row = project as Record<string, unknown>;
+      const name = str(row.name ?? row.title, 120);
+      if (!name) return null;
+      return {
+        name,
+        summary: str(row.summary ?? row.description, 400),
+        tech: strList(row.tech ?? row.technologies, 40, 12),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+
+  let years = Number(obj.yearsExperience ?? obj.years ?? 0);
+  if (!Number.isFinite(years) || years < 0) years = 0;
+  if (years > 50) years = 50;
+
+  return {
+    candidate: str(obj.candidate ?? obj.name, 80) || "Candidate",
+    headline: str(obj.headline ?? obj.title, 140),
+    location: str(obj.location, 80),
+    email: str(obj.email, 120),
+    phone: str(obj.phone, 40),
+    linkedin: str(obj.linkedin, 200),
+    github: str(obj.github, 200),
+    portfolio: str(obj.portfolio ?? obj.website, 200),
+    yearsExperience: years,
+    skills: strList(obj.skills, 60, 80),
+    experience,
+    education: strList(obj.education, 200, 10).filter((item) => item.length >= 2),
+    certifications: strList(obj.certifications, 200, 16).filter((item) => item.length >= 2),
+    projects,
+  };
+}
+
+function mergeResume(primary: CandidateResume, fallback: CandidateResume): CandidateResume {
+  return {
+    candidate:
+      primary.candidate && primary.candidate !== "Candidate" ? primary.candidate : fallback.candidate,
+    headline: primary.headline || fallback.headline,
+    location: primary.location || fallback.location,
+    email: primary.email || fallback.email,
+    phone: primary.phone || fallback.phone,
+    linkedin: primary.linkedin || fallback.linkedin,
+    github: primary.github || fallback.github,
+    portfolio: primary.portfolio || fallback.portfolio,
+    yearsExperience: primary.yearsExperience || fallback.yearsExperience,
+    skills: primary.skills.length ? unique([...primary.skills, ...fallback.skills]).slice(0, 50) : fallback.skills,
+    experience: primary.experience.length ? primary.experience : fallback.experience,
+    education: primary.education.length ? primary.education : fallback.education,
+    certifications: primary.certifications.length ? primary.certifications : fallback.certifications,
+    projects: primary.projects.length ? primary.projects : fallback.projects,
   };
 }
 
@@ -428,6 +569,7 @@ Copy evidence bullets from the resume text. Do not invent employers, schools, da
 If a field is missing, use "" or [].
 yearsExperience is an integer (0 if unknown).
 evidence[] must be short factual bullets from the resume, not paraphrased marketing.
+Put every job under experience[] with company, role, dates, and evidence bullets.
 Schema: { candidate, headline, location, email, phone, linkedin, github, portfolio, yearsExperience, skills[], experience[{company, role, location, start, end, evidence[]}], education[], certifications[], projects[{name, summary, tech[]}] }
 ${wrapUntrustedResume(resumeText)}`;
 }
@@ -438,26 +580,44 @@ export async function extractStructuredResume(
 ): Promise<{
   resume: CandidateResume;
   mode: "gemini" | "heuristic";
+  warning?: string;
 }> {
   const fallback = extractResumeHeuristic(resumeText);
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || options?.allowGemini === false) return { resume: fallback, mode: "heuristic" };
+  if (!apiKey || options?.allowGemini === false) {
+    return {
+      resume: fallback,
+      mode: "heuristic",
+      warning: !apiKey ? "No GEMINI_API_KEY — used local extract." : undefined,
+    };
+  }
 
   try {
-    const raw = await callModel(apiKey, extractPrompt(resumeText.slice(0, 12000)), null, 0, {
-      models: ["gemini-2.0-flash"],
-      maxAttempts: 1,
+    const raw = await callModel(apiKey, extractPrompt(resumeText.slice(0, 14000)), RESUME_SCHEMA, 0, {
+      models: ["gemini-flash-latest", "gemini-flash-lite-latest"],
+      maxAttempts: 2,
     });
-    const resume = parseCandidateResume(raw);
-    if (!resume.candidate || resume.candidate === "Candidate") {
-      resume.candidate = fallback.candidate;
+    const parsed = parseCandidateResume(raw);
+    const resume = mergeResume(parsed, fallback);
+    if (!resume.experience.length && !resume.skills.length) {
+      logEvent("resume_extract_thin", { ok: false });
+      return {
+        resume: fallback,
+        mode: "heuristic",
+        warning: "Gemini returned an empty extract. Showing local parse — edit before scoring.",
+      };
     }
-    if (!resume.skills.length) resume.skills = fallback.skills;
-    if (!resume.experience.length) resume.experience = fallback.experience;
-    if (!resume.yearsExperience) resume.yearsExperience = fallback.yearsExperience;
     return { resume, mode: "gemini" };
-  } catch {
-    logEvent("resume_extract_fallback", { ok: true });
-    return { resume: fallback, mode: "heuristic" };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "gemini_failed";
+    logEvent("resume_extract_fallback", {
+      ok: true,
+      reason: reason.replace(/\s+/g, " ").slice(0, 80),
+    });
+    const warning =
+      reason === "gemini_budget"
+        ? "Gemini hourly limit reached. Showing local extract — edit it, or raise GEMINI_MAX_CALLS_PER_HOUR."
+        : "Gemini extract failed. Showing local extract you can edit.";
+    return { resume: fallback, mode: "heuristic", warning };
   }
 }
