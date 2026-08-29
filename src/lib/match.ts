@@ -29,6 +29,8 @@ const ALIASES: Record<string, string[]> = {
   graphql: ["graphql"],
   docker: ["docker"],
   kafka: ["kafka"],
+  opensearch: ["opensearch", "elasticsearch"],
+  elasticsearch: ["elasticsearch", "opensearch"],
   "socket.io": ["socket.io", "websocket", "real-time", "realtime"],
   oauth: ["oauth", "jwt"],
 };
@@ -59,6 +61,81 @@ const TRANSFERABLE: TransferRule[] = [
     adjacent: /rbac|oauth|rest|integration/i,
     withAdjacent: "No CRM platform tenure; has shipped RBAC, REST integrations, and domain workflows that transfer.",
     without: "No Salesforce/SAP tenure listed on the resume.",
+  },
+];
+
+/** Specific products named in a JD line. Close cousins stay partial, not strong. */
+type ToolFamily = {
+  id: string;
+  pattern: RegExp;
+  aliases: string[];
+  adjacent: RegExp;
+  transfer: string;
+};
+
+const NAMED_TOOLS: ToolFamily[] = [
+  {
+    id: "dbt",
+    pattern: /\bdbt\b/i,
+    aliases: ["dbt"],
+    adjacent: /a^/,
+    transfer: "No dbt on the resume; SQL / Postgres modeling is the closest analog.",
+  },
+  {
+    id: "warehouse",
+    pattern: /snowflake|bigquery|redshift/i,
+    aliases: ["snowflake", "bigquery", "redshift"],
+    adjacent: /\b(sql|postgres|postgresql|mysql)\b/i,
+    transfer: "No Snowflake / BigQuery / Redshift; resume SQL is on Postgres / MySQL.",
+  },
+  {
+    id: "orchestrator",
+    pattern: /\b(airflow|dagster|prefect)\b/i,
+    aliases: ["airflow", "dagster", "prefect"],
+    adjacent: /\b(kafka|lambda|pipeline)\b/i,
+    transfer: "No Airflow / Dagster / Prefect; orchestration on the resume is Kafka / Lambda pipelines.",
+  },
+  {
+    id: "observability",
+    pattern: /datadog|prometheus|grafana/i,
+    aliases: ["datadog", "prometheus", "grafana"],
+    adjacent: /\b(sentry|kubernetes|k8s|monitor)\b/i,
+    transfer: "No Datadog / Prometheus / Grafana listed; closest ops signal is Sentry / Kubernetes.",
+  },
+  {
+    id: "search",
+    pattern: /elasticsearch|opensearch/i,
+    aliases: ["elasticsearch", "opensearch"],
+    adjacent: /\b(rag|embeddings|bedrock|vector)\b/i,
+    transfer: "No Elasticsearch / OpenSearch on the resume; RAG / embeddings work is adjacent.",
+  },
+  {
+    id: "ltr",
+    pattern: /lightgbm|xgboost|learning-to-rank|learning to rank/i,
+    aliases: ["lightgbm", "xgboost"],
+    adjacent: /\b(rag|embeddings|openai|bedrock)\b/i,
+    transfer: "No LightGBM / XGBoost ranker on the resume; retrieval / embeddings work is adjacent.",
+  },
+  {
+    id: "rrf",
+    pattern: /\brrf\b|reciprocal rank fusion/i,
+    aliases: ["rrf", "reciprocal rank fusion"],
+    adjacent: /\b(rag|opensearch|embeddings|hybrid)\b/i,
+    transfer: "No RRF listed; hybrid lexical + vector retrieval is the closest analog.",
+  },
+  {
+    id: "eval",
+    pattern: /recall@|ndcg|\bmrr\b/i,
+    aliases: ["ndcg", "mrr", "recall@k", "recall@"],
+    adjacent: /\b(rag|embeddings|opensearch)\b/i,
+    transfer: "No recall@k / NDCG / MRR listed; production RAG is adjacent, not an eval harness.",
+  },
+  {
+    id: "vecdb",
+    pattern: /\bfaiss\b|\bscann\b|pgvector/i,
+    aliases: ["faiss", "scann", "pgvector"],
+    adjacent: /\b(opensearch|elasticsearch|embeddings|rag)\b/i,
+    transfer: "No FAISS / ScaNN / pgvector; OpenSearch / embeddings is the listed vector store.",
   },
 ];
 
@@ -98,6 +175,47 @@ function transferableFor(requirement: string, resume: CandidateResume): string |
   const rule = TRANSFERABLE.find((item) => item.pattern.test(requirement));
   if (!rule) return null;
   return rule.adjacent.test(hay) ? rule.withAdjacent : rule.without;
+}
+
+function hasAlias(hay: string, aliases: string[]): boolean {
+  const n = normalize(hay);
+  return aliases.some((alias) => n.includes(normalize(alias)));
+}
+
+function namedFamilies(requirement: string): ToolFamily[] {
+  return NAMED_TOOLS.filter((family) => family.pattern.test(requirement));
+}
+
+/**
+ * If the JD names a specific product, Strong requires that product (or a declared alias).
+ * Adjacent work becomes Partial with a transferable note — not a full hit.
+ */
+function applyNamedToolGate(
+  requirement: string,
+  resume: CandidateResume,
+  match: RequirementMatch
+): RequirementMatch {
+  const families = namedFamilies(requirement);
+  if (!families.length) return match;
+
+  const hay = resumeHaystack(resume);
+  const missing = families.filter((family) => !hasAlias(hay, family.aliases));
+  if (!missing.length) return match;
+
+  const transfer = missing[0]?.transfer ?? transferableFor(requirement, resume) ?? "No direct production experience.";
+  const canPartial = missing.every((family) => family.adjacent.test(hay));
+
+  if (match.status === "gap" && !canPartial) {
+    return { ...match, transferable: match.transferable ?? transfer, gap: match.gap ?? transfer };
+  }
+
+  return {
+    ...match,
+    status: canPartial ? "partial_match" : "gap",
+    evidence: canPartial ? match.evidence : [],
+    gap: canPartial ? null : transfer,
+    transferable: transfer,
+  };
 }
 
 export function enforceNoStrongWithoutEvidence(match: RequirementMatch): RequirementMatch {
@@ -167,14 +285,18 @@ export function matchRequirement(
     evidence.push(`Listed skill on verified resume: ${listed.slice(0, 3).join(", ")}`);
   }
 
-  return enforceNoStrongWithoutEvidence({
+  return applyNamedToolGate(
     requirement,
-    status,
-    evidence: status === "gap" ? [] : evidence,
-    gap: status === "gap" ? transfer ?? "No direct production experience." : null,
-    transferable: status === "gap" ? transfer : null,
-    category,
-  });
+    resume,
+    enforceNoStrongWithoutEvidence({
+      requirement,
+      status,
+      evidence: status === "gap" ? [] : evidence,
+      gap: status === "gap" ? transfer ?? "No direct production experience." : null,
+      transferable: status === "gap" ? transfer : null,
+      category,
+    })
+  );
 }
 
 function uniqueReqs(items: string[]): string[] {

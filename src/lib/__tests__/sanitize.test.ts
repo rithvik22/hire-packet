@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MIN_JD_CHARS, sanitizeJobDescription, wrapUntrustedJd } from "@/lib/sanitize";
+import { MIN_JD_CHARS, sanitizeJobDescription, stripJobBoardChrome, wrapUntrustedJd } from "@/lib/sanitize";
 import { decodePacket, encodePacket, getShare, putShare } from "@/lib/share";
 import { slugify } from "@/lib/slug";
 import { heuristicFit } from "@/lib/heuristic";
@@ -17,6 +17,24 @@ describe("sanitizeJobDescription", () => {
     const result = sanitizeJobDescription(jd);
     expect(result.flagged).toBe(true);
     expect(result.text.length).toBeGreaterThan(40);
+  });
+
+  it("drops LinkedIn UI chrome from a pasted job post", () => {
+    const pasted = `Senior Full Stack Engineer
+Show match details
+Tailor my resume
+Help me stand out
+Create cover letter
+About the job
+Build Node.js APIs with React.
+`;
+    const stripped = stripJobBoardChrome(pasted);
+    expect(stripped).toContain("Node.js");
+    expect(stripped).not.toMatch(/Show match details/);
+    expect(stripped).not.toMatch(/Tailor my resume/);
+    const result = sanitizeJobDescription(pasted);
+    expect(result.error).toBeUndefined();
+    expect(result.text).not.toMatch(/Show match details/);
   });
 
   it("wraps the JD in untrusted delimiters", () => {

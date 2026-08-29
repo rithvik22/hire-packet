@@ -4,12 +4,36 @@ const INJECTION =
 export const MIN_JD_CHARS = 40;
 export const MAX_JD_CHARS = 12000;
 
+const JOB_BOARD_CHROME =
+  /^(apply|save|show match details|tailor my resume|help me stand out|create cover letter|is this information helpful\??|you.?d be a top applicant.*|your profile and resume seem to match.*|responses managed off linkedin|see how you compare.*|based on linkedin data.*|candidates who clicked.*|beta( •.*)?|about the job)$/i;
+
+/** Drop LinkedIn / job-board UI chrome so extract sees the actual JD. */
+export function stripJobBoardChrome(raw: string): string {
+  const lines = String(raw || "")
+    .split("\n")
+    .map((line) => line.trimEnd());
+
+  const kept = lines.filter((line) => {
+    const text = line.trim();
+    if (!text) return true;
+    if (JOB_BOARD_CHROME.test(text)) return false;
+    if (/clicked apply/i.test(text)) return false;
+    if (/managed off linkedin/i.test(text)) return false;
+    if (/\b\d+\s+people clicked/i.test(text)) return false;
+    if (/^BETA\b/i.test(text)) return false;
+    if (/benefits found in job post/i.test(text)) return false;
+    return true;
+  });
+
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export function sanitizeJobDescription(raw: string): {
   text: string;
   flagged: boolean;
   error?: string;
 } {
-  const text = String(raw || "").trim();
+  const text = stripJobBoardChrome(String(raw || "")).trim();
   if (text.length < MIN_JD_CHARS) {
     return { text, flagged: false, error: "Paste a fuller job description (at least ~40 characters)." };
   }

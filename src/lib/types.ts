@@ -168,4 +168,4 @@ export const RECRUITER_STATUS_LABELS: Record<RecruiterStatus, string> = {
 };
 
 export const AI_DISCLOSURE =
-  "AI-assisted packet. Evidence is copied from a structured resume the user confirmed. Matching mixes lexical aliases, TF-IDF retrieval, and optional Gemini embeddings over resume bullets; scoring runs in code — Gemini cannot invent employers. The fit score is 35 / 25 / 20 / 10 / 10. This is not a hiring decision.";
+  "AI-assisted packet. Evidence is copied from a structured resume the user confirmed. Matching mixes lexical aliases, TF-IDF retrieval, optional Gemini embeddings, and reciprocal rank fusion (RRF) over resume bullets; scoring runs in code — Gemini cannot invent employers. Named JD tools cannot be a strong match unless they appear on the resume. The fit score is 35 / 25 / 20 / 10 / 10. This is not a hiring decision.";

@@ -222,8 +222,39 @@ function retrieveEvidenceLexical(
     .slice(0, topK);
 }
 
+/** Reciprocal rank fusion. k=60 is the standard constant. Free — no API. */
+export function reciprocalRankFusion(lists: RankedEvidence[][], k = 60): RankedEvidence[] {
+  const fused = new Map<string, { row: RankedEvidence; rrf: number; reasons: string[] }>();
+
+  lists.forEach((list, listIndex) => {
+    const label = listIndex === 0 ? "lexical" : "embed";
+    list.forEach((row, rank) => {
+      const add = 1 / (k + rank + 1);
+      const cur = fused.get(row.text);
+      const reason = `rrf ${label} #${rank + 1}`;
+      if (!cur) {
+        fused.set(row.text, { row, rrf: add, reasons: [reason, ...row.reasons] });
+      } else {
+        cur.rrf += add;
+        cur.reasons.push(reason);
+      }
+    });
+  });
+
+  const rows = [...fused.values()];
+  const max = Math.max(...rows.map((r) => r.rrf), 1e-9);
+
+  return rows
+    .map(({ row, rrf, reasons }) => ({
+      ...row,
+      score: Math.round((rrf / max) * 1000) / 1000,
+      reasons,
+    }))
+    .sort((a, b) => b.score - a.score || a.text.localeCompare(b.text));
+}
+
 /**
- * Hybrid retrieval: Gemini embeddings + lexical TF-IDF.
+ * Hybrid retrieval: fuse lexical TF-IDF and Gemini embeddings with RRF.
  * Falls back to lexical-only when embeddings are off or fail.
  * Never invents evidence text — only ranks existing resume bullets.
  */
@@ -249,24 +280,21 @@ export async function retrieveEvidenceEmbedded(
 
   if (!queryVec || !docVecs.some(Boolean)) return lexical.slice(0, topK);
 
-  const byText = new Map(lexical.map((row) => [row.text, row]));
-  const blended: RankedEvidence[] = corpus.map((row, i) => {
-    const docVec = docVecs![i];
-    const embedScore = docVec ? cosineSimilarity(queryVec!, docVec) : 0;
-    const lex = byText.get(row.text);
-    const lexScore = lex?.score ?? 0;
-    const score = Math.round((embedScore * 0.72 + lexScore * 0.28) * 1000) / 1000;
-    const reasons = [
-      ...(embedScore >= 0.35 ? [`embed ${embedScore.toFixed(2)}`] : []),
-      ...(lex?.reasons || []),
-    ];
-    return { ...row, score, reasons };
-  });
-
-  return blended
-    .filter((row) => row.score >= 0.22)
+  const embedded: RankedEvidence[] = corpus
+    .map((row, i) => {
+      const docVec = docVecs![i];
+      const embedScore = docVec ? cosineSimilarity(queryVec!, docVec) : 0;
+      return {
+        ...row,
+        score: Math.round(embedScore * 1000) / 1000,
+        reasons: embedScore >= 0.35 ? [`embed ${embedScore.toFixed(2)}`] : [],
+      };
+    })
+    .filter((row) => row.score >= 0.18)
     .sort((a, b) => b.score - a.score || a.text.localeCompare(b.text))
-    .slice(0, topK);
+    .slice(0, Math.max(topK, 8));
+
+  return reciprocalRankFusion([lexical, embedded]).slice(0, topK);
 }
 
 /** Prefetch embeddings for one resume + many requirements (one/two batch calls). */

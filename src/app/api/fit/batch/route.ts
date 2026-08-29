@@ -3,7 +3,7 @@ import { generateHirePackets } from "@/lib/gemini";
 import { logEvent } from "@/lib/log";
 import { clientIp, isRateLimited } from "@/lib/rate-limit";
 import { sanitizeJobDescription } from "@/lib/sanitize";
-import { CandidateResumeSchema, JdExtractionSchema } from "@/lib/schema";
+import { CandidateResumeSchema, clipJdExtraction, JdExtractionSchema } from "@/lib/schema";
 import { parseCandidateResume } from "@/lib/extract-resume";
 import { MAX_COMPARE_RESUMES } from "@/lib/compare";
 
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       resumes.push(parseCandidateResume(parsed.data));
     }
 
-    const confirmed = body?.extraction ? JdExtractionSchema.safeParse(body.extraction) : null;
+    const confirmed = body?.extraction ? JdExtractionSchema.safeParse(clipJdExtraction(body.extraction)) : null;
     if (body?.extraction && !confirmed?.success) {
       return NextResponse.json({ error: "JD extract failed validation. Fix the fields and score again." }, { status: 400 });
     }

@@ -4,7 +4,7 @@ import { assemblePacket, heuristicNarrative } from "@/lib/assemble";
 import { callModel } from "@/lib/gemini-client";
 import { logEvent } from "@/lib/log";
 import { matchJob, matchJobAsync } from "@/lib/match";
-import { JdExtractionSchema, NarrativeSchema } from "@/lib/schema";
+import { clipJdExtraction, JdExtractionSchema, NarrativeSchema } from "@/lib/schema";
 import { geminiNarrativeEnabled } from "@/lib/gemini-budget";
 import { wrapUntrustedJd } from "@/lib/sanitize";
 import { computeScore } from "@/lib/scoring";
@@ -48,6 +48,13 @@ const NARRATIVE_SCHEMA: ResponseSchema = {
 function extractPrompt(jobDescription: string): string {
   return `Extract hiring requirements from the job description. Return JSON only.
 Do not score a candidate. Do not mention any person. Do not invent requirements that are not in the JD.
+Ignore job-board / LinkedIn UI chrome (Apply, Save, Show match details, Tailor my resume, people clicked apply, match score widgets, benefits widgets).
+Ignore company marketing ("Why us", culture blurbs) unless it states a concrete skill.
+requiredSkills = requirements / qualifications only.
+preferredSkills = preferred / nice-to-have / bonus only.
+responsibilities = key responsibilities / what you will do only.
+education = degrees or certifications only — not preferred skills.
+Each array item must be a short line (under 160 characters; responsibilities under 220).
 Schema: { role, requiredSkills[], preferredSkills[], responsibilities[], minimumExperience, education[] }
 minimumExperience is a number of years (0 if unspecified).
 ${wrapUntrustedJd(jobDescription)}`;
@@ -76,7 +83,7 @@ ${JSON.stringify(verified, null, 2)}`;
 }
 
 export function parseJdExtraction(raw: unknown): JdExtraction {
-  const parsed = JdExtractionSchema.parse(raw);
+  const parsed = JdExtractionSchema.parse(clipJdExtraction(raw));
   return {
     role: parsed.role,
     requiredSkills: parsed.requiredSkills,
